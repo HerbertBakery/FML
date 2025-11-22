@@ -6,6 +6,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const user = await getUserFromRequest(req);
+
   if (!user) {
     return NextResponse.json(
       { user: null },
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
     user: {
       id: user.id,
       email: user.email,
-    },
+      coins: user.coins
+    }
   });
 }

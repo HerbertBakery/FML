@@ -10,44 +10,53 @@ datasource db {
 }
 
 model User {
-  id              String              @id @default(cuid())
-  email           String              @unique
-  passwordHash    String?
-  createdAt       DateTime            @default(now())
-  monsters        UserMonster[]
-  packOpens       PackOpen[]
-  squads          Squad[]
-  gameweekEntries GameweekEntry[]
-  gameweekScores  UserGameweekScore[]
-  leaguesOwned    League[]            @relation("LeagueOwner")
-  leagueMemberships LeagueMember[]
+  id                 String               @id @default(cuid())
+  email              String               @unique
+  passwordHash       String?
+  createdAt          DateTime             @default(now())
+  coins              Int                  @default(1000)
+
+  monsters           UserMonster[]
+  packOpens          PackOpen[]
+  squads             Squad[]
+  gameweekEntries    GameweekEntry[]
+  gameweekScores     UserGameweekScore[]
+  leaguesOwned       League[]             @relation("LeagueOwner")
+  leagueMemberships  LeagueMember[]
+
+  listings           MarketListing[]
+  transactionsBought MarketTransaction[]  @relation("Buyer")
+  transactionsSold   MarketTransaction[]  @relation("Seller")
 }
 
 model UserMonster {
-  id                 String          @id @default(cuid())
-  user               User            @relation(fields: [userId], references: [id])
+  id                 String               @id @default(cuid())
+  user               User                 @relation(fields: [userId], references: [id])
   userId             String
   templateCode       String
   displayName        String
   realPlayerName     String
-  position           String          // "GK", "DEF", "MID", "FWD"
+  position           String               // "GK", "DEF", "MID", "FWD"
   club               String
   rarity             String
   baseAttack         Int
   baseMagic          Int
   baseDefense        Int
-  createdAt          DateTime        @default(now())
+  createdAt          DateTime             @default(now())
 
   // Evolution + cumulative stats
-  evolutionLevel     Int             @default(0)
-  totalGoals         Int             @default(0)
-  totalAssists       Int             @default(0)
-  totalCleanSheets   Int             @default(0)
-  totalFantasyPoints Int             @default(0)
+  evolutionLevel     Int                  @default(0)
+  totalGoals         Int                  @default(0)
+  totalAssists       Int                  @default(0)
+  totalCleanSheets   Int                  @default(0)
+  totalFantasyPoints Int                  @default(0)
 
   squadSlots         SquadMonster[]
   gameweekSlots      GameweekEntryMonster[]
   evolutionEvents    EvolutionEvent[]
+
+  marketListing      MarketListing?
+  transactions       MarketTransaction[]
 }
 
 model PackOpen {
@@ -159,4 +168,33 @@ model LeagueMember {
   createdAt DateTime @default(now())
 
   @@unique([leagueId, userId])
+}
+
+// Marketplace
+
+model MarketListing {
+  id            String       @id @default(cuid())
+  seller        User         @relation(fields: [sellerId], references: [id])
+  sellerId      String
+  userMonster   UserMonster  @relation(fields: [userMonsterId], references: [id])
+  userMonsterId String       @unique
+  price         Int
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+
+  transactions  MarketTransaction[]
+}
+
+model MarketTransaction {
+  id            String          @id @default(cuid())
+  listing       MarketListing?  @relation(fields: [listingId], references: [id])
+  listingId     String?
+  buyer         User            @relation("Buyer", fields: [buyerId], references: [id])
+  buyerId       String
+  seller        User            @relation("Seller", fields: [sellerId], references: [id])
+  sellerId      String
+  userMonster   UserMonster     @relation(fields: [userMonsterId], references: [id])
+  userMonsterId String
+  price         Int
+  createdAt     DateTime        @default(now())
 }
