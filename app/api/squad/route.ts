@@ -5,24 +5,8 @@ import { getUserFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-type UserMonsterDTO = {
-  id: string;
-  templateCode: string;
-  displayName: string;
-  realPlayerName: string;
-  position: string;
-  club: string;
-  rarity: string;
-  baseAttack: number;
-  baseMagic: number;
-  baseDefense: number;
-};
-
-type SquadResponse = {
-  squad: {
-    id: string;
-    monsters: UserMonsterDTO[];
-  } | null;
+type SaveBody = {
+  userMonsterIds?: string[];
 };
 
 function positionsSummary(monsters: { position: string }[]) {
@@ -40,7 +24,7 @@ function positionsSummary(monsters: { position: string }[]) {
   return counts;
 }
 
-// GET: fetch current squad
+// GET: return latest saved squad for the user
 export async function GET(req: NextRequest) {
   const user = await getUserFromRequest(req);
   if (!user) {
@@ -55,20 +39,17 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: "desc" },
     include: {
       slots: {
-        include: {
-          userMonster: true
-        },
+        include: { userMonster: true },
         orderBy: { slot: "asc" }
       }
     }
   });
 
   if (!squad) {
-    const empty: SquadResponse = { squad: null };
-    return NextResponse.json(empty);
+    return NextResponse.json({ squad: null });
   }
 
-  const monsters: UserMonsterDTO[] = squad.slots.map((slot) => ({
+  const monsters = squad.slots.map((slot) => ({
     id: slot.userMonster.id,
     templateCode: slot.userMonster.templateCode,
     displayName: slot.userMonster.displayName,
@@ -81,17 +62,15 @@ export async function GET(req: NextRequest) {
     baseDefense: slot.userMonster.baseDefense
   }));
 
-  const response: SquadResponse = {
+  return NextResponse.json({
     squad: {
       id: squad.id,
       monsters
     }
-  };
-
-  return NextResponse.json(response);
+  });
 }
 
-// POST: save squad (5-a-side, at least 1 in each position)
+// POST: save 6-monster “default” squad
 export async function POST(req: NextRequest) {
   const user = await getUserFromRequest(req);
   if (!user) {
@@ -101,7 +80,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { userMonsterIds?: string[] } = {};
+  let body: SaveBody = {};
   try {
     body = await req.json();
   } catch {
@@ -114,9 +93,11 @@ export async function POST(req: NextRequest) {
   const ids = body.userMonsterIds || [];
   const uniqueIds = Array.from(new Set(ids));
 
-  if (uniqueIds.length !== 5) {
+  const maxPlayers = 6;
+
+  if (uniqueIds.length !== maxPlayers) {
     return NextResponse.json(
-      { error: "You must select exactly 5 monsters." },
+      { error: "You must select exactly 6 monsters." },
       { status: 400 }
     );
   }
@@ -137,30 +118,27 @@ export async function POST(req: NextRequest) {
 
   const counts = positionsSummary(monsters);
 
-  if (
-    counts.GK < 1 ||
-    counts.DEF < 1 ||
-    counts.MID < 1 ||
-    counts.FWD < 1
-  ) {
+  // Rules:
+  // - Exactly 1 GK
+  // - At least 1 DEF, 1 MID, 1 FWD
+  if (counts.GK !== 1 || counts.DEF < 1 || counts.MID < 1 || counts.FWD < 1) {
     return NextResponse.json(
       {
         error:
-          "Your 5-a-side squad must contain at least 1 GK, 1 DEF, 1 MID, and 1 FWD."
+          "Your squad must contain exactly 1 GK and at least 1 DEF, 1 MID, and 1 FWD."
       },
       { status: 400 }
     );
   }
 
-  // Overwrite any existing squads for this user
+  // Overwrite any existing squads
   const existing = await prisma.squad.findMany({
     where: { userId: user.id },
     select: { id: true }
   });
-
   const existingIds = existing.map((s) => s.id);
 
-  await prisma.$transaction(async (tx) => {
+  const squad = await prisma.$transaction(async (tx) => {
     if (existingIds.length > 0) {
       await tx.squadMonster.deleteMany({
         where: { squadId: { in: existingIds } }
@@ -170,7 +148,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const squad = await tx.squad.create({
+    const newSquad = await tx.squad.create({
       data: {
         userId: user.id
       }
@@ -178,55 +156,18 @@ export async function POST(req: NextRequest) {
 
     await tx.squadMonster.createMany({
       data: uniqueIds.map((monsterId, index) => ({
-        squadId: squad.id,
+        squadId: newSquad.id,
         userMonsterId: monsterId,
         slot: index
       }))
     });
+
+    return newSquad;
   });
 
-  // Reload squad with monsters for response
-  const savedSquad = await prisma.squad.findFirst({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    include: {
-      slots: {
-        include: {
-          userMonster: true
-        },
-        orderBy: { slot: "asc" }
-      }
-    }
-  });
-
-  if (!savedSquad) {
-    return NextResponse.json(
-      { error: "Failed to save squad." },
-      { status: 500 }
-    );
-  }
-
-  const monstersDTO: UserMonsterDTO[] = savedSquad.slots.map(
-    (slot) => ({
-      id: slot.userMonster.id,
-      templateCode: slot.userMonster.templateCode,
-      displayName: slot.userMonster.displayName,
-      realPlayerName: slot.userMonster.realPlayerName,
-      position: slot.userMonster.position,
-      club: slot.userMonster.club,
-      rarity: slot.userMonster.rarity,
-      baseAttack: slot.userMonster.baseAttack,
-      baseMagic: slot.userMonster.baseMagic,
-      baseDefense: slot.userMonster.baseDefense
-    })
-  );
-
-  const response: SquadResponse = {
+  return NextResponse.json({
     squad: {
-      id: savedSquad.id,
-      monsters: monstersDTO
+      id: squad.id
     }
-  };
-
-  return NextResponse.json(response);
+  });
 }

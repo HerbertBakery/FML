@@ -17,6 +17,8 @@ model User {
   monsters     UserMonster[]
   packOpens    PackOpen[]
   squads       Squad[]
+  gameweekEntries GameweekEntry[]
+  gameweekScores  UserGameweekScore[]
 }
 
 model UserMonster {
@@ -34,6 +36,7 @@ model UserMonster {
   baseDefense    Int
   createdAt      DateTime @default(now())
   squadSlots     SquadMonster[]
+  gameweekSlots  GameweekEntryMonster[]
 }
 
 model PackOpen {
@@ -44,7 +47,7 @@ model PackOpen {
   createdAt DateTime @default(now())
 }
 
-// A saved 5-a-side squad (for now: latest squad per user)
+// Saved “default” squad (your general 6-monster matchday squad)
 model Squad {
   id        String         @id @default(cuid())
   user      User           @relation(fields: [userId], references: [id])
@@ -54,7 +57,6 @@ model Squad {
   slots     SquadMonster[]
 }
 
-// Each selected monster in a squad (one of the 5)
 model SquadMonster {
   id            String      @id @default(cuid())
   squad         Squad       @relation(fields: [squadId], references: [id])
@@ -62,4 +64,49 @@ model SquadMonster {
   userMonster   UserMonster @relation(fields: [userMonsterId], references: [id])
   userMonsterId String
   slot          Int
+}
+
+// Gameweek definitions (for now we’ll auto-create GW 1)
+model Gameweek {
+  id        String             @id @default(cuid())
+  number    Int
+  name      String?
+  deadlineAt DateTime
+  isActive  Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  entries   GameweekEntry[]
+  scores    UserGameweekScore[]
+}
+
+// A locked entry of your 6-monster squad for a given gameweek
+model GameweekEntry {
+  id         String                  @id @default(cuid())
+  user       User                    @relation(fields: [userId], references: [id])
+  userId     String
+  gameweek   Gameweek                @relation(fields: [gameweekId], references: [id])
+  gameweekId String
+  createdAt  DateTime                @default(now())
+  monsters   GameweekEntryMonster[]
+}
+
+// Each monster in a gameweek entry (6 of them, 2 treated as subs)
+model GameweekEntryMonster {
+  id            String      @id @default(cuid())
+  entry         GameweekEntry @relation(fields: [entryId], references: [id])
+  entryId       String
+  userMonster   UserMonster @relation(fields: [userMonsterId], references: [id])
+  userMonsterId String
+  slot          Int        // 0–5; we can treat slot >= 4 as “subs” for now
+  isSub         Boolean    @default(false)
+}
+
+// Total points for a user in a given gameweek (for leaderboards)
+model UserGameweekScore {
+  id         String    @id @default(cuid())
+  user       User      @relation(fields: [userId], references: [id])
+  userId     String
+  gameweek   Gameweek  @relation(fields: [gameweekId], references: [id])
+  gameweekId String
+  points     Int       @default(0)
+  createdAt  DateTime  @default(now())
 }

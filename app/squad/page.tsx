@@ -43,6 +43,8 @@ export default function SquadPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const maxPlayers = 6;
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -67,6 +69,7 @@ export default function SquadPage() {
           setCollection(colData.monsters);
         }
 
+        // Load previously saved default squad, if any
         const squadRes = await fetch("/api/squad", {
           credentials: "include"
         });
@@ -88,8 +91,6 @@ export default function SquadPage() {
 
     load();
   }, []);
-
-  const maxPlayers = 5;
 
   const selectedMonsters = useMemo(
     () =>
@@ -114,7 +115,7 @@ export default function SquadPage() {
 
   const isValidSquad =
     selectedIds.length === maxPlayers &&
-    counts.GK >= 1 &&
+    counts.GK === 1 &&
     counts.DEF >= 1 &&
     counts.MID >= 1 &&
     counts.FWD >= 1;
@@ -140,14 +141,15 @@ export default function SquadPage() {
 
     if (!isValidSquad) {
       setError(
-        "You must pick exactly 5 monsters, including at least 1 GK, 1 DEF, 1 MID, and 1 FWD."
+        "You must pick exactly 6 monsters, including exactly 1 GK and at least 1 DEF, 1 MID, and 1 FWD."
       );
       return;
     }
 
     setSaving(true);
     try {
-      const res = await fetch("/api/squad", {
+      // 1) Save default squad
+      const squadRes = await fetch("/api/squad", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -156,18 +158,45 @@ export default function SquadPage() {
         body: JSON.stringify({ userMonsterIds: selectedIds })
       });
 
-      const data = await res.json().catch(() => null);
+      const squadData = await squadRes
+        .json()
+        .catch(() => null);
 
-      if (!res.ok) {
+      if (!squadRes.ok) {
         setError(
-          data?.error || "Failed to save squad. Please try again."
+          squadData?.error ||
+            "Failed to save squad. Please try again."
         );
         return;
       }
 
-      setSuccess("Squad saved! You’re ready for the game week.");
+      // 2) Lock for current gameweek
+      const gwRes = await fetch("/api/gameweeks/entry", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        credentials: "include",
+        body: JSON.stringify({ userMonsterIds: selectedIds })
+      });
+
+      const gwData = await gwRes.json().catch(() => null);
+
+      if (!gwRes.ok) {
+        setError(
+          gwData?.error ||
+            "Squad saved but failed to lock for the current gameweek."
+        );
+        return;
+      }
+
+      setSuccess(
+        "Squad saved and locked for the current gameweek. You’re ready!"
+      );
     } catch {
-      setError("Something went wrong saving your squad.");
+      setError(
+        "Something went wrong saving and locking your squad."
+      );
     } finally {
       setSaving(false);
     }
@@ -202,7 +231,8 @@ export default function SquadPage() {
             Log in to manage your squad
           </h2>
           <p className="text-sm text-slate-300 mb-3">
-            You need an account to build and save your 5-a-side team.
+            You need an account to build and lock your 6-monster team
+            for the upcoming gameweek.
           </p>
           <div className="flex gap-3">
             <Link
@@ -229,14 +259,16 @@ export default function SquadPage() {
     <main className="space-y-6">
       <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
         <h2 className="text-xl font-semibold mb-2">
-          Build your 5-a-side squad
+          Build your 6-monster matchday squad
         </h2>
         <p className="text-xs text-slate-400 mb-2">
-          You must select exactly 5 monsters and include at least 1
-          Goalkeeper, 1 Defender, 1 Midfielder, and 1 Forward.
+          Pick exactly 6 monsters: you must have exactly 1 Goalkeeper
+          plus at least 1 Defender, 1 Midfielder, and 1 Forward. The
+          extra 2 outfielders act as your subs for this gameweek.
         </p>
         <p className="text-xs text-slate-400">
-          Signed in as <span className="font-mono">{user.email}</span>
+          Signed in as{" "}
+          <span className="font-mono">{user.email}</span>
         </p>
       </section>
 
@@ -254,7 +286,7 @@ export default function SquadPage() {
             >
               home page
             </Link>{" "}
-            until you have at least 5 monsters to build a squad.
+            until you have at least 6 monsters to build a squad.
           </p>
         </section>
       ) : (
@@ -316,7 +348,9 @@ export default function SquadPage() {
                   : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
               }`}
             >
-              {saving ? "Saving..." : "Save Squad"}
+              {saving
+                ? "Saving & locking..."
+                : "Save Squad & Lock for Gameweek"}
             </button>
           </section>
 

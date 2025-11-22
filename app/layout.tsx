@@ -35,6 +35,12 @@ export default function RootLayout({
                 My Squad
               </Link>
               <Link
+                href="/leaderboard"
+                className="text-slate-300 hover:text-emerald-300"
+              >
+                Leaderboard
+              </Link>
+              <Link
                 href="/login"
                 className="text-slate-300 hover:text-emerald-300"
               >
