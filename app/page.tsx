@@ -26,6 +26,11 @@ type OpenPackResponse = {
   monsters: UserMonsterDTO[];
 };
 
+type CollectionResponse = {
+  monsters: UserMonsterDTO[];
+  starterPacksOpened: number;
+};
+
 export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
   const [checkingUser, setCheckingUser] = useState(true);
@@ -42,24 +47,44 @@ export default function HomePage() {
     !!user && packsOpened < maxStarterPacks && !opening;
 
   useEffect(() => {
-    const check = async () => {
+    const loadUserAndCollection = async () => {
       try {
-        const res = await fetch("/api/auth/me", {
-          credentials: "include",
+        const meRes = await fetch("/api/auth/me", {
+          credentials: "include"
         });
-        if (!res.ok) {
+
+        if (!meRes.ok) {
           setUser(null);
+          setCollection([]);
+          setPacksOpened(0);
+          return;
+        }
+
+        const meData = await meRes.json();
+        setUser(meData.user);
+
+        const colRes = await fetch("/api/me/collection", {
+          credentials: "include"
+        });
+
+        if (colRes.ok) {
+          const colData: CollectionResponse = await colRes.json();
+          setCollection(colData.monsters);
+          setPacksOpened(colData.starterPacksOpened);
         } else {
-          const data = await res.json();
-          setUser(data.user);
+          setCollection([]);
+          setPacksOpened(0);
         }
       } catch {
         setUser(null);
+        setCollection([]);
+        setPacksOpened(0);
       } finally {
         setCheckingUser(false);
       }
     };
-    check();
+
+    loadUserAndCollection();
   }, []);
 
   async function handleOpenPack() {
@@ -72,25 +97,42 @@ export default function HomePage() {
       const res = await fetch("/api/packs/open", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
         credentials: "include",
-        body: JSON.stringify({ packType: "STARTER" }),
+        body: JSON.stringify({ packType: "STARTER" })
       });
 
       if (!res.ok) {
-        console.error("Failed to open pack", res.status);
+        const data = await res.json().catch(() => null);
+        console.error("Failed to open pack", res.status, data);
         return;
       }
 
       const data: OpenPackResponse = await res.json();
       setLastPack(data.monsters);
-      setCollection((prev) => [...prev, ...data.monsters]);
+      setCollection((prev) => [...data.monsters, ...prev]); // newest first
       setPacksOpened((prev) => prev + 1);
     } catch (err) {
       console.error("Error opening pack", err);
     } finally {
       setOpening(false);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include"
+      });
+    } catch {
+      // ignore
+    } finally {
+      setUser(null);
+      setCollection([]);
+      setPacksOpened(0);
+      setLastPack(null);
     }
   }
 
@@ -139,17 +181,28 @@ export default function HomePage() {
   return (
     <main className="space-y-6">
       <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
-        <h2 className="text-xl font-semibold mb-1">
-          Welcome back, Monster Manager
-        </h2>
-        <p className="text-xs text-slate-400 mb-1">
-          Signed in as <span className="font-mono">{user.email}</span>
-        </p>
-        <p className="text-sm text-slate-300">
-          Open packs, collect monsterized Premier League stars, and
-          soon you&apos;ll be able to field squads and compete in
-          fantasy leagues.
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold mb-1">
+              Welcome back, Monster Manager
+            </h2>
+            <p className="text-xs text-slate-400 mb-1">
+              Signed in as <span className="font-mono">{user.email}</span>
+            </p>
+            <p className="text-sm text-slate-300">
+              Open packs, collect monsterized Premier League stars, and
+              soon you&apos;ll be able to field squads and compete in
+              fantasy leagues.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-full border border-slate-600 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-red-400 hover:text-red-300"
+          >
+            Log Out
+          </button>
+        </div>
       </section>
 
       <section className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 space-y-4">
@@ -159,8 +212,7 @@ export default function HomePage() {
               Starter Packs ({packsOpened}/{maxStarterPacks})
             </h3>
             <p className="text-xs text-emerald-100">
-              New managers get two free starter packs to build their
-              first squad.
+              You can only open two free starter packs per account.
             </p>
           </div>
           <button

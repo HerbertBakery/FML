@@ -87,7 +87,22 @@ export async function POST(req: NextRequest) {
       packType = "STARTER";
     }
   } catch {
-    // ignore, default to STARTER
+    // ignore
+  }
+
+  // Enforce starter pack limit server-side
+  if (packType === "STARTER") {
+    const starterCount = await prisma.packOpen.count({
+      where: { userId: user.id, packType: "STARTER" }
+    });
+
+    const maxStarterPacks = 2;
+    if (starterCount >= maxStarterPacks) {
+      return NextResponse.json(
+        { error: "No starter packs remaining." },
+        { status: 400 }
+      );
+    }
   }
 
   await prisma.packOpen.create({
