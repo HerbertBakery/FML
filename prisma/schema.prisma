@@ -19,6 +19,8 @@ model User {
   squads          Squad[]
   gameweekEntries GameweekEntry[]
   gameweekScores  UserGameweekScore[]
+  leaguesOwned    League[]            @relation("LeagueOwner")
+  leagueMemberships LeagueMember[]
 }
 
 model UserMonster {
@@ -134,4 +136,27 @@ model EvolutionEvent {
   oldLevel      Int
   newLevel      Int
   createdAt     DateTime     @default(now())
+}
+
+// Mini-leagues
+
+model League {
+  id          String         @id @default(cuid())
+  name        String
+  code        String         @unique
+  owner       User           @relation("LeagueOwner", fields: [ownerId], references: [id])
+  ownerId     String
+  createdAt   DateTime       @default(now())
+  memberships LeagueMember[]
+}
+
+model LeagueMember {
+  id        String   @id @default(cuid())
+  league    League   @relation(fields: [leagueId], references: [id])
+  leagueId  String
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@unique([leagueId, userId])
 }
