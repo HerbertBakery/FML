@@ -1,301 +1,272 @@
 // lib/scoring.ts
-import { prisma } from "./db";
+//
+// Gameweek scoring for Fantasy Monster League.
+//
+// - Ensures the Gameweek row exists (auto-creates if missing).
+// - Pulls official FPL live data for a given gameweek.
+// - Uses bootstrap-static to map FPL element id -> code.
+// - Maps FPL "code" to our UserMonster.templateCode.
+// - Updates per-monster career totals (goals, assists, CS, fantasy points).
+// - Aggregates per-user gameweek totals into UserGameweekScore.
+//
+// IMPORTANT: This assumes your UserMonster.templateCode is the FPL "code" field,
+// which is exactly how we set it when opening packs (templateCode: String(p.code)).
 
-export type StatInput = {
-  templateCode: string; // maps to UserMonster.templateCode (FPL code)
-  goals?: number;
-  assists?: number;
-  cleanSheet?: boolean;
-  minutes?: number;
-  saves?: number;
-  pensSaved?: number;
+import { prisma } from "@/lib/db";
+
+// ---------- Types for FPL API ----------
+
+type FplElementLive = {
+  id: number; // FPL element id
+  stats: {
+    minutes: number;
+    goals_scored: number;
+    assists: number;
+    clean_sheets: number;
+    goals_conceded: number;
+    own_goals: number;
+    penalties_saved: number;
+    penalties_missed: number;
+    yellow_cards: number;
+    red_cards: number;
+    saves: number;
+    bonus: number;
+    bps: number;
+    total_points: number;
+  };
 };
 
-// Fantasy scoring rules (same as before)
-export function computeFantasyPoints(
-  position: string,
-  perf: StatInput
-): number {
-  const minutes = perf.minutes ?? 0;
-  const goals = perf.goals ?? 0;
-  const assists = perf.assists ?? 0;
-  const cs = perf.cleanSheet ?? false;
-  const saves = perf.saves ?? 0;
-  const pensSaved = perf.pensSaved ?? 0;
+type FplLiveEventResponse = {
+  elements: FplElementLive[];
+};
 
-  let pts = 0;
+type FplBootstrapElement = {
+  id: number; // FPL element id
+  code: number; // FPL code
+};
 
-  // Minutes
-  if (minutes >= 60) pts += 2;
-  else if (minutes > 0) pts += 1;
+type FplBootstrapResponse = {
+  elements: FplBootstrapElement[];
+};
 
-  switch (position) {
-    case "GK":
-      pts += goals * 6;
-      pts += assists * 3;
-      if (cs && minutes >= 60) pts += 4;
-      pts += Math.floor(saves / 3); // +1 per 3 saves
-      pts += pensSaved * 5;
-      break;
-    case "DEF":
-      pts += goals * 7;
-      pts += assists * 3;
-      if (cs && minutes >= 60) pts += 4;
-      break;
-    case "MID":
-      pts += goals * 6;
-      pts += assists * 3;
-      if (cs && minutes >= 60) pts += 1;
-      break;
-    case "FWD":
-      pts += goals * 5;
-      pts += assists * 3;
-      break;
-    default:
-      pts += goals * 5;
-      pts += assists * 3;
+export type PlayerPerformance = {
+  fplId: number; // element id
+  code: number | null; // FPL code (used to match templateCode)
+  goals: number;
+  assists: number;
+  cleanSheets: number;
+  totalPoints: number;
+};
+
+// ---------- Fetch helpers ----------
+
+/**
+ * Fetch bootstrap-static once, to get a mapping from element id -> code.
+ */
+async function fetchIdToCodeMap(): Promise<Map<number, number>> {
+  const url = "https://fantasy.premierleague.com/api/bootstrap-static/";
+  const res = await fetch(url, { cache: "force-cache" });
+
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch FPL bootstrap-static (status ${res.status})`
+    );
   }
 
-  return pts;
-}
+  const data = (await res.json()) as FplBootstrapResponse;
 
-// Evolution rules
-export function computeNewEvolutionLevelAndStats(args: {
-  position: string;
-  rarity: string;
-  currentLevel: number;
-  totalGoals: number;
-  totalAssists: number;
-  totalCleanSheets: number;
-  perf: StatInput;
-}) {
-  const {
-    position,
-    rarity,
-    currentLevel,
-    totalGoals,
-    totalAssists,
-    totalCleanSheets,
-    perf
-  } = args;
-
-  let newLevel = currentLevel;
-  const goalsThis = perf.goals ?? 0;
-  const assistsThis = perf.assists ?? 0;
-  const csThis = perf.cleanSheet ?? false;
-
-  // Forward evolutions
-  if (position === "FWD") {
-    if (goalsThis >= 3 && newLevel < 1) {
-      newLevel = 1;
-    }
-    if (totalGoals >= 15 && newLevel < 2) {
-      newLevel = 2;
-    }
+  if (!data.elements || !Array.isArray(data.elements)) {
+    throw new Error("Unexpected bootstrap-static response shape");
   }
 
-  // Midfield evolutions
-  if (position === "MID") {
-    if (assistsThis >= 2 && newLevel < 1) {
-      newLevel = 1;
+  const map = new Map<number, number>();
+  for (const el of data.elements) {
+    if (typeof el.id === "number" && typeof el.code === "number") {
+      map.set(el.id, el.code);
     }
-    if (totalAssists >= 15 && newLevel < 2) {
-      newLevel = 2;
-    }
-  }
-
-  // Defender / GK evolutions based on clean sheets
-  if (position === "DEF" || position === "GK") {
-    if (totalCleanSheets >= 5 && newLevel < 1) {
-      newLevel = 1;
-    }
-    if (totalCleanSheets >= 12 && newLevel < 2) {
-      newLevel = 2;
-    }
-  }
-
-  // Legendary slight bias
-  const r = rarity.toUpperCase();
-  if (r === "LEGENDARY" && newLevel < 2) {
-    if ((goalsThis > 0 || assistsThis > 0 || csThis) && currentLevel === 0) {
-      newLevel = 1;
-    }
-  }
-
-  return newLevel;
-}
-
-// Stat buff per evolution level
-export function statBuffPerLevel(position: string) {
-  switch (position) {
-    case "FWD":
-      return { atk: 7, mag: 3, def: 2 };
-    case "MID":
-      return { atk: 5, mag: 5, def: 3 };
-    case "DEF":
-      return { atk: 3, mag: 2, def: 6 };
-    case "GK":
-      return { atk: 2, mag: 6, def: 7 };
-    default:
-      return { atk: 4, mag: 4, def: 4 };
-  }
-}
-
-function getPerformanceMap(perfs: StatInput[]) {
-  const map = new Map<string, StatInput>();
-  for (const p of perfs) {
-    map.set(String(p.templateCode), p);
   }
   return map;
 }
 
-// Core: apply performances to one gameweek (used by both ingest-stats + FPL)
+/**
+ * Fetch live FPL stats for a given gameweek and attach FPL "code"
+ * (so we can match your monsters via templateCode = code).
+ */
+async function fetchFplGameweekLiveWithCode(
+  gameweekNumber: number
+): Promise<PlayerPerformance[]> {
+  // First get id -> code map
+  const idToCode = await fetchIdToCodeMap();
+
+  // Then get the live event data
+  const url = `https://fantasy.premierleague.com/api/event/${gameweekNumber}/live/`;
+  const res = await fetch(url, { cache: "no-store" });
+
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch FPL data for gameweek ${gameweekNumber} (status ${res.status})`
+    );
+  }
+
+  const data = (await res.json()) as FplLiveEventResponse;
+
+  if (!data.elements || !Array.isArray(data.elements)) {
+    throw new Error(
+      `Unexpected FPL live response shape for gameweek ${gameweekNumber}`
+    );
+  }
+
+  return data.elements.map((el) => {
+    const code = idToCode.get(el.id) ?? null;
+    return {
+      fplId: el.id,
+      code,
+      goals: el.stats.goals_scored ?? 0,
+      assists: el.stats.assists ?? 0,
+      cleanSheets: el.stats.clean_sheets ?? 0,
+      totalPoints: el.stats.total_points ?? 0
+    };
+  });
+}
+
+// ---------- Main scoring function ----------
+
+/**
+ * Main scoring function, called by the admin scoring route.
+ *
+ * Steps:
+ *  1. Ensure Gameweek row exists (create if missing).
+ *  2. Fetch FPL stats (live + bootstrap mapping).
+ *  3. Build a map from FPL "code" -> performance.
+ *  4. Find UserMonsters whose templateCode matches that code.
+ *  5. Update monster career totals.
+ *  6. Aggregate and upsert UserGameweekScore per user.
+ */
 export async function applyGameweekPerformances(
-  gameweekNumber: number,
-  performances: StatInput[]
-) {
-  const gw = await prisma.gameweek.findFirst({
+  gameweekNumber: number
+): Promise<void> {
+  if (!Number.isInteger(gameweekNumber) || gameweekNumber <= 0) {
+    throw new Error(
+      `Invalid gameweekNumber: ${gameweekNumber}`
+    );
+  }
+
+  // 1) Ensure Gameweek exists in our DB
+  let gw = await prisma.gameweek.findFirst({
     where: { number: gameweekNumber }
   });
 
   if (!gw) {
-    throw new Error(`Gameweek ${gameweekNumber} not found.`);
+    // Auto-create a shell gameweek if not found.
+    gw = await prisma.gameweek.create({
+      data: {
+        number: gameweekNumber,
+        name: `Gameweek ${gameweekNumber}`,
+        // This date is just metadata for FML; scoring is keyed by gameweekNumber.
+        deadlineAt: new Date(),
+        isActive: true
+      }
+    });
   }
 
-  const perfMap = getPerformanceMap(performances);
+  // 2) Fetch FPL stats (with code)
+  const performances = await fetchFplGameweekLiveWithCode(
+    gameweekNumber
+  );
 
-  const entries = await prisma.gameweekEntry.findMany({
-    where: { gameweekId: gw.id },
-    include: {
-      monsters: {
-        include: {
-          userMonster: true
-        },
-        orderBy: { slot: "asc" }
+  if (performances.length === 0) {
+    console.warn(
+      `No FPL performances found for gameweek ${gameweekNumber}.`
+    );
+    return;
+  }
+
+  // 3) Build a lookup map by FPL "code" as string
+  const perfByCode = new Map<string, PlayerPerformance>();
+  for (const p of performances) {
+    if (p.code == null) continue;
+    perfByCode.set(String(p.code), p);
+  }
+
+  if (perfByCode.size === 0) {
+    console.warn(
+      `No FPL codes available to map for gameweek ${gameweekNumber}.`
+    );
+    return;
+  }
+
+  const matchingTemplateCodes = Array.from(perfByCode.keys());
+
+  // 4) Find all UserMonsters whose templateCode matches any of those codes.
+  const monsters = await prisma.userMonster.findMany({
+    where: {
+      templateCode: {
+        in: matchingTemplateCodes
       }
     }
   });
 
-  if (entries.length === 0) {
-    return {
-      gameweekId: gw.id,
-      gameweekNumber,
-      entriesProcessed: 0,
-      monstersUpdated: 0
-    };
+  if (monsters.length === 0) {
+    console.warn(
+      `No UserMonster entries matched FPL codes for gameweek ${gameweekNumber}.`
+    );
+    return;
   }
 
-  let totalMonsterUpdates = 0;
+  // 5) Update monster totals & aggregate per-user gameweek totals
+  const userTotals = new Map<string, number>();
 
-  await prisma.$transaction(async (tx) => {
-    for (const entry of entries) {
-      let totalPointsForUser = 0;
+  for (const monster of monsters) {
+    const perf = perfByCode.get(monster.templateCode);
+    if (!perf) continue;
 
-      for (const m of entry.monsters) {
-        const um = m.userMonster;
-
-        const perf =
-          perfMap.get(String(um.templateCode)) || {
-            templateCode: String(um.templateCode)
-          };
-
-        const basePoints = computeFantasyPoints(
-          um.position,
-          perf
-        );
-        const factor = m.isSub ? 0.5 : 1.0;
-        const points = Math.round(basePoints * factor);
-        totalPointsForUser += points;
-
-        const goalsThis = perf.goals ?? 0;
-        const assistsThis = perf.assists ?? 0;
-        const csThis = perf.cleanSheet ?? false;
-
-        const newTotals = {
-          totalGoals: um.totalGoals + goalsThis,
-          totalAssists: um.totalAssists + assistsThis,
-          totalCleanSheets: um.totalCleanSheets + (csThis ? 1 : 0),
-          totalFantasyPoints: um.totalFantasyPoints + points
-        };
-
-        const newLevel = computeNewEvolutionLevelAndStats({
-          position: um.position,
-          rarity: um.rarity,
-          currentLevel: um.evolutionLevel,
-          totalGoals: newTotals.totalGoals,
-          totalAssists: newTotals.totalAssists,
-          totalCleanSheets: newTotals.totalCleanSheets,
-          perf
-        });
-
-        const levelChanged = newLevel !== um.evolutionLevel;
-
-        let newAttack = um.baseAttack;
-        let newMagic = um.baseMagic;
-        let newDefense = um.baseDefense;
-
-        if (levelChanged) {
-          const diffLevels = newLevel - um.evolutionLevel;
-          if (diffLevels > 0) {
-            const buff = statBuffPerLevel(um.position);
-            newAttack = um.baseAttack + buff.atk * diffLevels;
-            newMagic = um.baseMagic + buff.mag * diffLevels;
-            newDefense = um.baseDefense + buff.def * diffLevels;
-          }
-        }
-
-        await tx.userMonster.update({
-          where: { id: um.id },
-          data: {
-            evolutionLevel: newLevel,
-            totalGoals: newTotals.totalGoals,
-            totalAssists: newTotals.totalAssists,
-            totalCleanSheets: newTotals.totalCleanSheets,
-            totalFantasyPoints: newTotals.totalFantasyPoints,
-            baseAttack: newAttack,
-            baseMagic: newMagic,
-            baseDefense: newDefense
-          }
-        });
-
-        totalMonsterUpdates++;
-
-        if (levelChanged) {
-          await tx.evolutionEvent.create({
-            data: {
-              userMonsterId: um.id,
-              gameweekId: gw.id,
-              reason: "Performance-based evolution",
-              oldLevel: um.evolutionLevel,
-              newLevel
-            }
-          });
+    // Update career totals
+    await prisma.userMonster.update({
+      where: { id: monster.id },
+      data: {
+        totalGoals: {
+          increment: perf.goals
+        },
+        totalAssists: {
+          increment: perf.assists
+        },
+        totalCleanSheets: {
+          increment: perf.cleanSheets
+        },
+        totalFantasyPoints: {
+          increment: perf.totalPoints
         }
       }
+    });
 
-      await tx.userGameweekScore.upsert({
-        where: {
-          userId_gameweekId: {
-            userId: entry.userId,
-            gameweekId: gw.id
-          }
-        },
-        update: {
-          points: totalPointsForUser
-        },
-        create: {
-          userId: entry.userId,
-          gameweekId: gw.id,
-          points: totalPointsForUser
+    // Aggregate per-user gameweek total
+    const prev = userTotals.get(monster.userId) ?? 0;
+    userTotals.set(monster.userId, prev + perf.totalPoints);
+  }
+
+  // 6) Upsert UserGameweekScore per user
+  const entries = Array.from(userTotals.entries()); // [userId, points]
+
+  for (const [userId, points] of entries) {
+    await prisma.userGameweekScore.upsert({
+      where: {
+        userId_gameweekId: {
+          userId,
+          gameweekId: gw.id
         }
-      });
-    }
-  });
+      },
+      update: {
+        points
+      },
+      create: {
+        userId,
+        gameweekId: gw.id,
+        points
+      }
+    });
+  }
 
-  return {
-    gameweekId: gw.id,
-    gameweekNumber,
-    entriesProcessed: entries.length,
-    monstersUpdated: totalMonsterUpdates
-  };
+  console.log(
+    `Scored gameweek ${gameweekNumber} for ${entries.length} users.`
+  );
 }
