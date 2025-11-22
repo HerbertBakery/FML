@@ -12,10 +12,11 @@ datasource db {
 model User {
   id           String        @id @default(cuid())
   email        String        @unique
-  passwordHash String?       // optional so old demo users won't break; new users must have a password
+  passwordHash String?
   createdAt    DateTime      @default(now())
   monsters     UserMonster[]
   packOpens    PackOpen[]
+  squads       Squad[]
 }
 
 model UserMonster {
@@ -25,13 +26,14 @@ model UserMonster {
   templateCode   String
   displayName    String
   realPlayerName String
-  position       String
+  position       String   // "GK", "DEF", "MID", "FWD"
   club           String
   rarity         String
   baseAttack     Int
   baseMagic      Int
   baseDefense    Int
   createdAt      DateTime @default(now())
+  squadSlots     SquadMonster[]
 }
 
 model PackOpen {
@@ -40,4 +42,24 @@ model PackOpen {
   userId    String
   packType  String
   createdAt DateTime @default(now())
+}
+
+// A saved 5-a-side squad (for now: latest squad per user)
+model Squad {
+  id        String         @id @default(cuid())
+  user      User           @relation(fields: [userId], references: [id])
+  userId    String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  slots     SquadMonster[]
+}
+
+// Each selected monster in a squad (one of the 5)
+model SquadMonster {
+  id            String      @id @default(cuid())
+  squad         Squad       @relation(fields: [squadId], references: [id])
+  squadId       String
+  userMonster   UserMonster @relation(fields: [userMonsterId], references: [id])
+  userMonsterId String
+  slot          Int
 }

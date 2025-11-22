@@ -90,10 +90,12 @@ export async function POST(req: NextRequest) {
     // ignore
   }
 
-  // Enforce starter pack limit server-side
   if (packType === "STARTER") {
     const starterCount = await prisma.packOpen.count({
-      where: { userId: user.id, packType: "STARTER" }
+      where: {
+        userId: user.id,
+        packType: "STARTER"
+      }
     });
 
     const maxStarterPacks = 2;

@@ -29,6 +29,12 @@ export default function RootLayout({
             </Link>
             <nav className="flex items-center gap-3 text-xs">
               <Link
+                href="/squad"
+                className="text-slate-300 hover:text-emerald-300"
+              >
+                My Squad
+              </Link>
+              <Link
                 href="/login"
                 className="text-slate-300 hover:text-emerald-300"
               >
