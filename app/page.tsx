@@ -1,6 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+type User = {
+  id: string;
+  email: string;
+};
 
 type UserMonsterDTO = {
   id: string;
@@ -21,6 +27,9 @@ type OpenPackResponse = {
 };
 
 export default function HomePage() {
+  const [user, setUser] = useState<User | null>(null);
+  const [checkingUser, setCheckingUser] = useState(true);
+
   const [packsOpened, setPacksOpened] = useState(0);
   const [opening, setOpening] = useState(false);
   const [lastPack, setLastPack] = useState<UserMonsterDTO[] | null>(
@@ -29,7 +38,29 @@ export default function HomePage() {
   const [collection, setCollection] = useState<UserMonsterDTO[]>([]);
   const maxStarterPacks = 2;
 
-  const canOpenPack = packsOpened < maxStarterPacks && !opening;
+  const canOpenPack =
+    !!user && packsOpened < maxStarterPacks && !opening;
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch("/api/auth/me", {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          setUser(null);
+        } else {
+          const data = await res.json();
+          setUser(data.user);
+        }
+      } catch {
+        setUser(null);
+      } finally {
+        setCheckingUser(false);
+      }
+    };
+    check();
+  }, []);
 
   async function handleOpenPack() {
     if (!canOpenPack) return;
@@ -43,6 +74,7 @@ export default function HomePage() {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({ packType: "STARTER" }),
       });
 
@@ -62,17 +94,61 @@ export default function HomePage() {
     }
   }
 
+  if (checkingUser) {
+    return (
+      <main className="space-y-6">
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
+          <p className="text-sm text-slate-300">
+            Loading your manager profile...
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="space-y-6">
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
+          <h2 className="text-xl font-semibold mb-2">
+            Welcome to Fantasy Monster League
+          </h2>
+          <p className="text-sm text-slate-300 mb-3">
+            To start opening packs, collecting monsters, and building
+            your squad, create a free account or log in.
+          </p>
+          <div className="flex gap-3">
+            <Link
+              href="/register"
+              className="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300"
+            >
+              Sign Up
+            </Link>
+            <Link
+              href="/login"
+              className="rounded-full border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-100 hover:border-emerald-300"
+            >
+              Log In
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="space-y-6">
       <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
-        <h2 className="text-xl font-semibold mb-2">
-          Welcome, Monster Manager
+        <h2 className="text-xl font-semibold mb-1">
+          Welcome back, Monster Manager
         </h2>
+        <p className="text-xs text-slate-400 mb-1">
+          Signed in as <span className="font-mono">{user.email}</span>
+        </p>
         <p className="text-sm text-slate-300">
-          This is the early build of{" "}
-          <span className="font-semibold">Fantasy Monster League</span> —{" "}
-          fantasy Premier League with monsterized players, packs, and a
-          persistent collection (saved in Postgres).
+          Open packs, collect monsterized Premier League stars, and
+          soon you&apos;ll be able to field squads and compete in
+          fantasy leagues.
         </p>
       </section>
 
@@ -83,8 +159,8 @@ export default function HomePage() {
               Starter Packs ({packsOpened}/{maxStarterPacks})
             </h3>
             <p className="text-xs text-emerald-100">
-              New managers get two free starter packs to build their first
-              squad. Currently using a demo account.
+              New managers get two free starter packs to build their
+              first squad.
             </p>
           </div>
           <button
@@ -109,7 +185,7 @@ export default function HomePage() {
         {lastPack && (
           <div className="mt-3">
             <h4 className="text-xs font-semibold text-emerald-200 mb-2">
-              Latest Pack (saved to DB)
+              Latest Pack (saved to your account)
             </h4>
             <div className="grid gap-3 sm:grid-cols-3">
               {lastPack.map((monster) => (
@@ -143,8 +219,8 @@ export default function HomePage() {
         <h3 className="font-semibold mb-2">Your Monster Collection</h3>
         {collection.length === 0 ? (
           <p className="text-xs text-slate-400">
-            You don&apos;t own any monsters yet (demo user). Open your
-            starter packs to begin your squad.
+            You don&apos;t own any monsters yet. Open your starter packs
+            to begin your squad.
           </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-3">

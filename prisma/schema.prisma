@@ -10,23 +10,24 @@ datasource db {
 }
 
 model User {
-  id        String        @id @default(cuid())
-  email     String        @unique
-  createdAt DateTime      @default(now())
-  monsters  UserMonster[]
-  packOpens PackOpen[]
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String?       // optional so old demo users won't break; new users must have a password
+  createdAt    DateTime      @default(now())
+  monsters     UserMonster[]
+  packOpens    PackOpen[]
 }
 
 model UserMonster {
   id             String   @id @default(cuid())
   user           User     @relation(fields: [userId], references: [id])
   userId         String
-  templateCode   String   // e.g. "HAUNTLAND"
-  displayName    String   // "Erling Haunt"
-  realPlayerName String   // "Erling Haaland"
-  position       String   // "FWD", "MID", etc.
+  templateCode   String
+  displayName    String
+  realPlayerName String
+  position       String
   club           String
-  rarity         String   // "COMMON", "RARE", "EPIC", "LEGENDARY"
+  rarity         String
   baseAttack     Int
   baseMagic      Int
   baseDefense    Int
@@ -37,6 +38,6 @@ model PackOpen {
   id        String   @id @default(cuid())
   user      User     @relation(fields: [userId], references: [id])
   userId    String
-  packType  String   // "STARTER", etc.
+  packType  String
   createdAt DateTime @default(now())
 }

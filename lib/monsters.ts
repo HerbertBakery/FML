@@ -25,7 +25,7 @@ export const MONSTER_TEMPLATES: MonsterTemplate[] = [
     rarity: "LEGENDARY",
     baseAttack: 96,
     baseMagic: 82,
-    baseDefense: 60,
+    baseDefense: 60
   },
   {
     code: "SALIZARD",
@@ -36,7 +36,7 @@ export const MONSTER_TEMPLATES: MonsterTemplate[] = [
     rarity: "EPIC",
     baseAttack: 92,
     baseMagic: 88,
-    baseDefense: 62,
+    baseDefense: 62
   },
   {
     code: "BRUNOCLAW",
@@ -47,7 +47,7 @@ export const MONSTER_TEMPLATES: MonsterTemplate[] = [
     rarity: "EPIC",
     baseAttack: 87,
     baseMagic: 91,
-    baseDefense: 68,
+    baseDefense: 68
   },
   {
     code: "SPIDERKEEPER",
@@ -58,7 +58,7 @@ export const MONSTER_TEMPLATES: MonsterTemplate[] = [
     rarity: "RARE",
     baseAttack: 40,
     baseMagic: 85,
-    baseDefense: 92,
+    baseDefense: 92
   },
   {
     code: "ROCKBACK",
@@ -69,7 +69,7 @@ export const MONSTER_TEMPLATES: MonsterTemplate[] = [
     rarity: "RARE",
     baseAttack: 70,
     baseMagic: 78,
-    baseDefense: 94,
+    baseDefense: 94
   },
   {
     code: "GREMLISH",
@@ -80,7 +80,7 @@ export const MONSTER_TEMPLATES: MonsterTemplate[] = [
     rarity: "COMMON",
     baseAttack: 80,
     baseMagic: 82,
-    baseDefense: 65,
+    baseDefense: 65
   },
   {
     code: "SAKAWRAITH",
@@ -91,6 +91,6 @@ export const MONSTER_TEMPLATES: MonsterTemplate[] = [
     rarity: "RARE",
     baseAttack: 89,
     baseMagic: 86,
-    baseDefense: 68,
-  },
+    baseDefense: 68
+  }
 ];

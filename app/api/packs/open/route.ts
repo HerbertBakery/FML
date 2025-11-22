@@ -1,13 +1,14 @@
 // app/api/packs/open/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import {
   MONSTER_TEMPLATES,
   MonsterTemplate,
-  Rarity,
+  Rarity
 } from "@/lib/monsters";
+import { getUserFromRequest } from "@/lib/auth";
 
-export const runtime = "nodejs"; // required so Prisma runs on Vercel
+export const runtime = "nodejs";
 
 type PackType = "STARTER";
 
@@ -33,7 +34,7 @@ const STARTER_RARITY_WEIGHTS: { rarity: Rarity; weight: number }[] = [
   { rarity: "COMMON", weight: 60 },
   { rarity: "RARE", weight: 30 },
   { rarity: "EPIC", weight: 9 },
-  { rarity: "LEGENDARY", weight: 1 },
+  { rarity: "LEGENDARY", weight: 1 }
 ];
 
 function pickRarity(): Rarity {
@@ -56,7 +57,6 @@ function randomInt(max: number) {
 
 function generatePackTemplates(count: number): MonsterTemplate[] {
   const results: MonsterTemplate[] = [];
-
   for (let i = 0; i < count; i++) {
     const rarity = pickRarity();
     const candidates = MONSTER_TEMPLATES.filter(
@@ -66,23 +66,19 @@ function generatePackTemplates(count: number): MonsterTemplate[] {
     const chosen = pool[randomInt(pool.length)];
     results.push(chosen);
   }
-
   return results;
 }
 
-// TEMP auth: single demo user for now.
-// Later we'll replace this with real authentication.
-async function getOrCreateDemoUser() {
-  const email = "demo@fml.local";
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-  });
-  return user;
-}
+export async function POST(req: NextRequest) {
+  const user = await getUserFromRequest(req);
 
-export async function POST(req: Request) {
+  if (!user) {
+    return NextResponse.json(
+      { error: "Not authenticated" },
+      { status: 401 }
+    );
+  }
+
   let packType: PackType = "STARTER";
 
   try {
@@ -94,17 +90,14 @@ export async function POST(req: Request) {
     // ignore, default to STARTER
   }
 
-  const user = await getOrCreateDemoUser();
-
   await prisma.packOpen.create({
     data: {
       userId: user.id,
-      packType,
-    },
+      packType
+    }
   });
 
   const templates = generatePackTemplates(6);
-
   const created: UserMonsterDTO[] = [];
 
   for (const tmpl of templates) {
@@ -119,8 +112,8 @@ export async function POST(req: Request) {
         rarity: tmpl.rarity,
         baseAttack: tmpl.baseAttack,
         baseMagic: tmpl.baseMagic,
-        baseDefense: tmpl.baseDefense,
-      },
+        baseDefense: tmpl.baseDefense
+      }
     });
 
     created.push({
@@ -133,13 +126,13 @@ export async function POST(req: Request) {
       rarity: monster.rarity,
       baseAttack: monster.baseAttack,
       baseMagic: monster.baseMagic,
-      baseDefense: monster.baseDefense,
+      baseDefense: monster.baseDefense
     });
   }
 
   const response: OpenPackResponse = {
     packType,
-    monsters: created,
+    monsters: created
   };
 
   return NextResponse.json(response);
