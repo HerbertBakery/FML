@@ -19,6 +19,7 @@ type UserMonsterDTO = {
   baseAttack: number;
   baseMagic: number;
   baseDefense: number;
+  evolutionLevel: number;
 };
 
 type CollectionResponse = {
@@ -69,7 +70,6 @@ export default function SquadPage() {
           setCollection(colData.monsters);
         }
 
-        // Load previously saved default squad, if any
         const squadRes = await fetch("/api/squad", {
           credentials: "include"
         });
@@ -148,7 +148,6 @@ export default function SquadPage() {
 
     setSaving(true);
     try {
-      // 1) Save default squad
       const squadRes = await fetch("/api/squad", {
         method: "POST",
         headers: {
@@ -170,7 +169,6 @@ export default function SquadPage() {
         return;
       }
 
-      // 2) Lock for current gameweek
       const gwRes = await fetch("/api/gameweeks/entry", {
         method: "POST",
         headers: {
@@ -414,6 +412,9 @@ export default function SquadPage() {
                             {monster.baseAttack} • MAG{" "}
                             {monster.baseMagic} • DEF{" "}
                             {monster.baseDefense}
+                          </p>
+                          <p className="text-[10px] text-emerald-300 mt-1">
+                            Evo Lv. {monster.evolutionLevel}
                           </p>
                         </button>
                       );

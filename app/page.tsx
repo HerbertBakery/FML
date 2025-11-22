@@ -19,6 +19,7 @@ type UserMonsterDTO = {
   baseAttack: number;
   baseMagic: number;
   baseDefense: number;
+  evolutionLevel: number;
 };
 
 type OpenPackResponse = {
@@ -111,7 +112,7 @@ export default function HomePage() {
 
       const data: OpenPackResponse = await res.json();
       setLastPack(data.monsters);
-      setCollection((prev) => [...data.monsters, ...prev]); // newest first
+      setCollection((prev) => [...data.monsters, ...prev]);
       setPacksOpened((prev) => prev + 1);
     } catch (err) {
       console.error("Error opening pack", err);
@@ -187,12 +188,13 @@ export default function HomePage() {
               Welcome back, Monster Manager
             </h2>
             <p className="text-xs text-slate-400 mb-1">
-              Signed in as <span className="font-mono">{user.email}</span>
+              Signed in as{" "}
+              <span className="font-mono">{user.email}</span>
             </p>
             <p className="text-sm text-slate-300">
               Open packs, collect monsterized Premier League stars, and
-              soon you&apos;ll be able to field squads and compete in
-              fantasy leagues.
+              lock your 6-monster squad for each gameweek to climb the
+              leaderboards.
             </p>
           </div>
           <button
@@ -260,6 +262,9 @@ export default function HomePage() {
                     {monster.position} • ATK {monster.baseAttack} • MAG{" "}
                     {monster.baseMagic} • DEF {monster.baseDefense}
                   </p>
+                  <p className="text-[10px] text-emerald-300 mt-1">
+                    Evo Lv. {monster.evolutionLevel}
+                  </p>
                 </div>
               ))}
             </div>
@@ -295,6 +300,9 @@ export default function HomePage() {
                 <p className="text-[11px] text-slate-400 mt-1">
                   {monster.position} • ATK {monster.baseAttack} • MAG{" "}
                   {monster.baseMagic} • DEF {monster.baseDefense}
+                </p>
+                <p className="text-[10px] text-emerald-300 mt-1">
+                  Evo Lv. {monster.evolutionLevel}
                 </p>
               </div>
             ))}

@@ -10,33 +10,42 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(cuid())
-  email        String        @unique
-  passwordHash String?
-  createdAt    DateTime      @default(now())
-  monsters     UserMonster[]
-  packOpens    PackOpen[]
-  squads       Squad[]
+  id              String              @id @default(cuid())
+  email           String              @unique
+  passwordHash    String?
+  createdAt       DateTime            @default(now())
+  monsters        UserMonster[]
+  packOpens       PackOpen[]
+  squads          Squad[]
   gameweekEntries GameweekEntry[]
   gameweekScores  UserGameweekScore[]
 }
 
 model UserMonster {
-  id             String   @id @default(cuid())
-  user           User     @relation(fields: [userId], references: [id])
-  userId         String
-  templateCode   String
-  displayName    String
-  realPlayerName String
-  position       String   // "GK", "DEF", "MID", "FWD"
-  club           String
-  rarity         String
-  baseAttack     Int
-  baseMagic      Int
-  baseDefense    Int
-  createdAt      DateTime @default(now())
-  squadSlots     SquadMonster[]
-  gameweekSlots  GameweekEntryMonster[]
+  id                 String          @id @default(cuid())
+  user               User            @relation(fields: [userId], references: [id])
+  userId             String
+  templateCode       String
+  displayName        String
+  realPlayerName     String
+  position           String          // "GK", "DEF", "MID", "FWD"
+  club               String
+  rarity             String
+  baseAttack         Int
+  baseMagic          Int
+  baseDefense        Int
+  createdAt          DateTime        @default(now())
+
+  // Evolution + cumulative stats
+  evolutionLevel     Int             @default(0)
+  totalGoals         Int             @default(0)
+  totalAssists       Int             @default(0)
+  totalCleanSheets   Int             @default(0)
+  totalFantasyPoints Int             @default(0)
+
+  squadSlots         SquadMonster[]
+  gameweekSlots      GameweekEntryMonster[]
+  evolutionEvents    EvolutionEvent[]
 }
 
 model PackOpen {
@@ -66,16 +75,17 @@ model SquadMonster {
   slot          Int
 }
 
-// Gameweek definitions (for now we’ll auto-create GW 1)
+// Gameweek definitions
 model Gameweek {
-  id        String             @id @default(cuid())
-  number    Int
-  name      String?
-  deadlineAt DateTime
-  isActive  Boolean            @default(true)
-  createdAt DateTime           @default(now())
-  entries   GameweekEntry[]
-  scores    UserGameweekScore[]
+  id              String             @id @default(cuid())
+  number          Int
+  name            String?
+  deadlineAt      DateTime
+  isActive        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  entries         GameweekEntry[]
+  scores          UserGameweekScore[]
+  evolutionEvents EvolutionEvent[]
 }
 
 // A locked entry of your 6-monster squad for a given gameweek
@@ -91,13 +101,13 @@ model GameweekEntry {
 
 // Each monster in a gameweek entry (6 of them, 2 treated as subs)
 model GameweekEntryMonster {
-  id            String      @id @default(cuid())
+  id            String        @id @default(cuid())
   entry         GameweekEntry @relation(fields: [entryId], references: [id])
   entryId       String
-  userMonster   UserMonster @relation(fields: [userMonsterId], references: [id])
+  userMonster   UserMonster   @relation(fields: [userMonsterId], references: [id])
   userMonsterId String
-  slot          Int        // 0–5; we can treat slot >= 4 as “subs” for now
-  isSub         Boolean    @default(false)
+  slot          Int
+  isSub         Boolean       @default(false)
 }
 
 // Total points for a user in a given gameweek (for leaderboards)
@@ -109,4 +119,19 @@ model UserGameweekScore {
   gameweekId String
   points     Int       @default(0)
   createdAt  DateTime  @default(now())
+
+  @@unique([userId, gameweekId])
+}
+
+// Evolution log (for future UI + history)
+model EvolutionEvent {
+  id            String       @id @default(cuid())
+  userMonster   UserMonster  @relation(fields: [userMonsterId], references: [id])
+  userMonsterId String
+  gameweek      Gameweek?    @relation(fields: [gameweekId], references: [id])
+  gameweekId    String?
+  reason        String
+  oldLevel      Int
+  newLevel      Int
+  createdAt     DateTime     @default(now())
 }

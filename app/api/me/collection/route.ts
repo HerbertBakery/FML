@@ -16,6 +16,7 @@ type UserMonsterDTO = {
   baseAttack: number;
   baseMagic: number;
   baseDefense: number;
+  evolutionLevel: number;
 };
 
 type CollectionResponse = {
@@ -57,7 +58,8 @@ export async function GET(req: NextRequest) {
       rarity: m.rarity,
       baseAttack: m.baseAttack,
       baseMagic: m.baseMagic,
-      baseDefense: m.baseDefense
+      baseDefense: m.baseDefense,
+      evolutionLevel: m.evolutionLevel
     })),
     starterPacksOpened
   };
