@@ -1,3 +1,4 @@
+// app/components/PackOpenModal.tsx
 "use client";
 
 import React, {
@@ -11,7 +12,6 @@ import { useRouter } from "next/navigation";
 
 // -------------------- Types --------------------
 
-// Match your pack ids
 export type PackId = "starter" | "bronze" | "silver" | "gold";
 
 export type OpenedMonster = {
@@ -39,7 +39,10 @@ type PackOpenResponse = {
 type Props = {
   packId: PackId;
   onClose?: () => void;
-  onOpened?: (monsters: OpenedMonster[], coinsAfter?: number) => void;
+  onOpened?: (
+    monsters: OpenedMonster[],
+    coinsAfter?: number
+  ) => void;
   /**
    * If true (default): clicking "Add to squad" will navigate to /squad.
    * If false: it will just close the modal, leaving the user on the current page.
@@ -113,7 +116,12 @@ const THEMES: Record<PackId, Theme> = {
 };
 
 // -------------------- Card Visual --------------------
-type RarityKey = "COMMON" | "RARE" | "EPIC" | "LEGENDARY" | "DEFAULT";
+type RarityKey =
+  | "COMMON"
+  | "RARE"
+  | "EPIC"
+  | "LEGENDARY"
+  | "DEFAULT";
 
 const rarityStyle: Record<
   RarityKey,
@@ -398,7 +406,7 @@ const PackOpenModal: React.FC<Props> = ({
             {phase === "buying" && (
               <div className="flex flex-col items-center gap-4 text-slate-300">
                 <div className="animate-spin h-8 w-8 border-2 border-slate-600 border-t-transparent rounded-full" />
-                <div>Purchasing pack…</div>
+                <div>Opening pack…</div>
               </div>
             )}
 

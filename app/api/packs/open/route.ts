@@ -367,6 +367,17 @@ export async function POST(req: NextRequest) {
             baseDefense: p.baseDefense
           }
         });
+
+        // NEW: log monster history — who found it, and from which pack
+        await tx.monsterHistoryEvent.create({
+          data: {
+            userMonsterId: created.id,
+            actorUserId: dbUser.id,
+            action: "CREATED",
+            description: `Found in ${def.name} pack (${def.id})`
+          }
+        });
+
         createdMonsters.push(created);
       }
 

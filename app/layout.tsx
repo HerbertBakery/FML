@@ -41,31 +41,45 @@ export default function RootLayout({
               {/* Main tabs + auth */}
               <div className="flex flex-col items-end gap-2">
                 <nav className="flex flex-wrap items-center justify-end gap-2 text-[11px]">
+
                   <Link
                     href="/squad"
                     className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
                   >
                     My Squads
                   </Link>
+
                   <Link
                     href="/leaderboards"
                     className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
                   >
                     Leaderboards
                   </Link>
+
                   <Link
                     href="/marketplace"
                     className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
                   >
                     Marketplace
                   </Link>
+
                   <Link
                     href="/packs"
                     className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
                   >
                     Shop
                   </Link>
+
+                  {/* ⭐ NEW TAB — Squad Builder Challenges */}
+                  <Link
+                    href="/challenges"
+                    className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+                  >
+                    SBCs
+                  </Link>
+
                 </nav>
+
                 <HeaderAuth />
               </div>
             </div>

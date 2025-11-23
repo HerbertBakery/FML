@@ -9,6 +9,7 @@ type MeUser = {
   id: string;
   email: string;
   coins: number;
+  username?: string | null;
 };
 
 type MeResponse = {
@@ -37,6 +38,35 @@ type SummaryResponse = {
   error?: string;
 };
 
+type StreakStatus = {
+  currentStreak: number;
+  longestStreak: number;
+  lastClaimedAt: string | null;
+  canClaim: boolean;
+};
+
+type StreakResponse = {
+  streak?: StreakStatus | null;
+  error?: string;
+};
+
+type CollectionResponse = {
+  monsters: {
+    id: string;
+    templateCode: string;
+    displayName: string;
+    realPlayerName: string;
+    position: string;
+    club: string;
+    rarity: string;
+    baseAttack: number;
+    baseMagic: number;
+    baseDefense: number;
+    evolutionLevel: number;
+  }[];
+  starterPacksOpened: number;
+};
+
 export default function HomePage() {
   const [me, setMe] = useState<MeUser | null>(null);
   const [summary, setSummary] =
@@ -46,26 +76,42 @@ export default function HomePage() {
   const [error, setError] =
     useState<string | null>(null);
 
-  // Starter-pack state (client-side only)
-  const [starterOpenedCount, setStarterOpenedCount] =
-    useState(0);
-  const [activeStarterModal, setActiveStarterModal] =
-    useState<"starter1" | "starter2" | null>(null);
+  const [streak, setStreak] =
+    useState<StreakStatus | null>(null);
+  const [streakError, setStreakError] =
+    useState<string | null>(null);
+  const [claimingStreak, setClaimingStreak] =
+    useState<boolean>(false);
+  const [streakMessage, setStreakMessage] =
+    useState<string | null>(null);
+
+  const [starterPacksOpened, setStarterPacksOpened] =
+    useState<number | null>(null);
   const [starterError, setStarterError] =
     useState<string | null>(null);
+  const [starterMessage, setStarterMessage] =
+    useState<string | null>(null);
+  const [showStarterModal, setShowStarterModal] =
+    useState<boolean>(false);
 
   async function load() {
     setLoading(true);
     setError(null);
+    setStreakError(null);
+    setStreakMessage(null);
+    setStarterError(null);
+    setStarterMessage(null);
 
     try {
       const meRes = await fetch("/api/auth/me", {
-        credentials: "include"
+        credentials: "include",
       });
 
       if (!meRes.ok) {
         setMe(null);
         setSummary(null);
+        setStreak(null);
+        setStarterPacksOpened(null);
         setLoading(false);
         return;
       }
@@ -74,16 +120,19 @@ export default function HomePage() {
       if (!meData.user) {
         setMe(null);
         setSummary(null);
+        setStreak(null);
+        setStarterPacksOpened(null);
         setLoading(false);
         return;
       }
 
       setMe(meData.user);
 
+      // Manager summary
       const sumRes = await fetch(
         "/api/me/summary",
         {
-          credentials: "include"
+          credentials: "include",
         }
       );
 
@@ -106,12 +155,61 @@ export default function HomePage() {
         }
         setSummary(data);
       }
+
+      // Load streak status (only if logged in)
+      const streakRes = await fetch("/api/streak", {
+        credentials: "include",
+      });
+      if (streakRes.ok) {
+        const s: StreakResponse =
+          await streakRes.json();
+        if (s.error) {
+          setStreakError(s.error);
+          setStreak(null);
+        } else if (s.streak) {
+          setStreak(s.streak);
+        } else {
+          setStreak(null);
+        }
+      } else {
+        const s = (await streakRes
+          .json()
+          .catch(() => null)) as
+          | StreakResponse
+          | null;
+        if (s?.error) {
+          setStreakError(s.error);
+        }
+        setStreak(null);
+      }
+
+      // Load starter pack meta (how many free starter packs opened)
+      const colRes = await fetch(
+        "/api/me/collection",
+        {
+          credentials: "include",
+        }
+      );
+      if (colRes.ok) {
+        const colData: CollectionResponse =
+          await colRes.json();
+        setStarterPacksOpened(
+          colData.starterPacksOpened ?? 0
+        );
+      } else {
+        setStarterPacksOpened(null);
+      }
     } catch {
       setError(
         "Error loading dashboard data."
       );
       setMe(null);
       setSummary(null);
+      setStreak(null);
+      setStreakError(
+        "Could not load streak data."
+      );
+      setStarterPacksOpened(null);
     } finally {
       setLoading(false);
     }
@@ -121,48 +219,91 @@ export default function HomePage() {
     load();
   }, []);
 
-  const monstersOwnedBase =
-    summary?.monsters?.totalOwned ?? 0;
+  async function handleClaimStreak() {
+    if (!streak) return;
+    setStreakError(null);
+    setStreakMessage(null);
+    setClaimingStreak(true);
 
-  // Show starter hero only for a brand new manager
-  const showStarterHero =
-    !!me &&
-    monstersOwnedBase === 0 &&
-    starterOpenedCount < 2;
+    try {
+      const res = await fetch(
+        "/api/streak/claim",
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+      const data = await res
+        .json()
+        .catch(() => null);
 
-  function openStarterModal(which: "starter1" | "starter2") {
+      if (!res.ok || !data?.ok) {
+        setStreakError(
+          data?.error ||
+            "Failed to claim daily reward."
+        );
+        return;
+      }
+
+      const {
+        coinsGranted,
+        coinsAfter,
+        currentStreak,
+        longestStreak,
+        lastClaimedAt,
+      } = data;
+
+      setStreak({
+        currentStreak,
+        longestStreak,
+        lastClaimedAt:
+          lastClaimedAt || null,
+        canClaim: false,
+      });
+
+      // Update coins in header/dashboard
+      setMe((prev) =>
+        prev
+          ? { ...prev, coins: coinsAfter }
+          : prev
+      );
+      setSummary((prev) =>
+        prev
+          ? {
+              ...prev,
+              user: {
+                ...prev.user,
+                coins: coinsAfter,
+              },
+            }
+          : prev
+      );
+
+      setStreakMessage(
+        `Daily reward claimed! You earned ${coinsGranted} coins.`
+      );
+    } catch {
+      setStreakError(
+        "Something went wrong claiming the reward."
+      );
+    } finally {
+      setClaimingStreak(false);
+    }
+  }
+
+  function handleOpenStarterPack() {
+    if (
+      starterPacksOpened === null ||
+      starterPacksOpened >= 2
+    ) {
+      return;
+    }
     setStarterError(null);
-
-    // Force Starter Pack 1 first
-    if (which === "starter2" && starterOpenedCount === 0) {
-      setStarterError(
-        "Open Starter Pack 1 before Starter Pack 2."
-      );
-      return;
-    }
-
-    if (starterOpenedCount >= 2) {
-      setStarterError(
-        "You’ve already opened your 2 starter packs."
-      );
-      return;
-    }
-
-    setActiveStarterModal(which);
+    setStarterMessage(null);
+    setShowStarterModal(true);
   }
 
-  function handleStarterModalClose() {
-    setActiveStarterModal(null);
-  }
-
-  function handleStarterOpened() {
-    // Called after the pack has been successfully opened
-    setStarterOpenedCount((prev) =>
-      prev < 2 ? prev + 1 : prev
-    );
-  }
-
-  // ----------------- Logged-out view -----------------
+  // Logged-out view
   if (!me) {
     return (
       <main className="space-y-6">
@@ -202,7 +343,7 @@ export default function HomePage() {
               packs</b>.
             </li>
             <li>
-              Build your <b>6-a-side monster squad</b>{" "}
+              Build your <b>6-a-side monster squad</b>
               (1 GK, at least 1 in each position).
             </li>
             <li>
@@ -226,7 +367,11 @@ export default function HomePage() {
     );
   }
 
-  // ----------------- Logged-in dashboard -----------------
+  // Logged-in dashboard
+  const starterAvailable =
+    starterPacksOpened !== null &&
+    starterPacksOpened < 2;
+
   return (
     <>
       <main className="space-y-6">
@@ -239,7 +384,7 @@ export default function HomePage() {
               <p className="text-xs text-slate-400 mb-1">
                 Welcome back,{" "}
                 <span className="font-mono">
-                  {me.email}
+                  {me.username || me.email}
                 </span>
                 .
               </p>
@@ -276,14 +421,14 @@ export default function HomePage() {
                 {summary?.user?.coins ?? me.coins}
               </p>
               <p className="mt-2 text-[11px] text-slate-400">
-                Spend coins in the{" "}
+                Spend coins on new packs in the{" "}
                 <Link
                   href="/packs"
                   className="underline underline-offset-2"
                 >
-                  Shop
-                </Link>{" "}
-                on new monster packs.
+                  Pack Store
+                </Link>
+                .
               </p>
             </div>
 
@@ -292,7 +437,7 @@ export default function HomePage() {
                 Monsters Owned
               </p>
               <p className="mt-1 text-lg font-semibold text-sky-300 font-mono">
-                {monstersOwnedBase}
+                {summary?.monsters?.totalOwned ?? 0}
               </p>
               <p className="mt-2 text-[11px] text-slate-400">
                 Manage your squad and collection on the{" "}
@@ -300,7 +445,7 @@ export default function HomePage() {
                   href="/squad"
                   className="underline underline-offset-2"
                 >
-                  My Squads page
+                  Squad page
                 </Link>
                 .
               </p>
@@ -322,7 +467,8 @@ export default function HomePage() {
                   :{" "}
                   <span className="font-mono">
                     {
-                      summary.latestGameweek
+                      summary
+                        .latestGameweek
                         .points
                     }{" "}
                     pts
@@ -330,12 +476,12 @@ export default function HomePage() {
                 </p>
               ) : (
                 <p className="mt-1 text-[11px] text-slate-300">
-                  No gameweek scores yet. Set your
-                  squad before the next deadline.
+                  No gameweek scores yet. Set your squad
+                  before the next deadline.
                 </p>
               )}
               <p className="mt-2 text-[11px] text-slate-400">
-                See rankings on{" "}
+                See rankings on the{" "}
                 <Link
                   href="/leaderboards"
                   className="underline underline-offset-2"
@@ -348,100 +494,134 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Starter packs hero – uses modal cinematic flow */}
-        {showStarterHero && (
-          <section className="rounded-2xl border border-emerald-500/40 bg-emerald-900/40 p-4 space-y-3">
-            <h2 className="text-sm font-semibold text-emerald-100">
-              Welcome! Open your 2 free starter packs
-            </h2>
-            <p className="text-[11px] text-emerald-200">
-              These packs are free and give you enough monsters
-              to build your first 6-a-side squad. Tap a pack to
-              rip it open and reveal your monsters.
-            </p>
-
-            <div className="flex flex-wrap items-center gap-6">
-              <div className="flex gap-4">
-                <button
-                  type="button"
-                  onClick={() =>
-                    openStarterModal("starter1")
-                  }
-                  className={`w-36 rounded-2xl border px-3 py-3 text-xs text-left transition ${
-                    starterOpenedCount >= 1
-                      ? "border-emerald-800 bg-emerald-900/40 text-emerald-400 cursor-not-allowed"
-                      : "border-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
-                  }`}
-                >
-                  <p className="text-[11px] font-semibold text-emerald-200">
-                    Starter Pack 1
-                  </p>
-                  <p className="mt-1 text-[10px] text-emerald-100/80">
-                    Free • 4 monsters
-                  </p>
-                  <p className="mt-2 text-[10px] text-emerald-300">
-                    {starterOpenedCount >= 1
-                      ? "Opened"
-                      : "Tap to open"}
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    openStarterModal("starter2")
-                  }
-                  className={`w-36 rounded-2xl border px-3 py-3 text-xs text-left transition ${
-                    starterOpenedCount >= 2
-                      ? "border-emerald-800 bg-emerald-900/40 text-emerald-400 cursor-not-allowed"
-                      : starterOpenedCount === 0
-                      ? "border-emerald-800 bg-emerald-900/40 text-emerald-400 cursor-not-allowed"
-                      : "border-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
-                  }`}
-                >
-                  <p className="text-[11px] font-semibold text-emerald-200">
-                    Starter Pack 2
-                  </p>
-                  <p className="mt-1 text-[10px] text-emerald-100/80">
-                    Free • 4 monsters
-                  </p>
-                  <p className="mt-2 text-[10px] text-emerald-300">
-                    {starterOpenedCount === 0
-                      ? "Open Pack 1 first"
-                      : starterOpenedCount >= 2
-                      ? "Opened"
-                      : "Tap to open"}
-                  </p>
-                </button>
-              </div>
-              <div className="text-[11px] text-emerald-100 max-w-xs">
-                <p>
-                  Packs opened:{" "}
-                  <span className="font-mono">
-                    {starterOpenedCount}/2
-                  </span>
+        {/* Daily streak card */}
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold text-slate-100">
+                Daily Login Streak
+              </p>
+              {streak ? (
+                <p className="mt-1 text-[11px] text-slate-300">
+                  Current streak:{" "}
+                  <span className="font-mono text-emerald-300">
+                    {streak.currentStreak}
+                  </span>{" "}
+                  days • Longest:{" "}
+                  <span className="font-mono text-sky-300">
+                    {streak.longestStreak}
+                  </span>{" "}
+                  days
                 </p>
-                <p className="mt-1">
-                  After opening both, head to{" "}
-                  <Link
-                    href="/squad"
-                    className="underline underline-offset-2"
-                  >
-                    My Squads
-                  </Link>{" "}
-                  to set your first team.
+              ) : (
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Track your daily logins and earn escalating
+                  coin rewards.
                 </p>
-                {starterError && (
-                  <p className="mt-1 text-red-300">
-                    {starterError}
-                  </p>
-                )}
-              </div>
+              )}
+              {streakMessage && (
+                <p className="mt-1 text-[11px] text-emerald-300">
+                  {streakMessage}
+                </p>
+              )}
+              {streakError && (
+                <p className="mt-1 text-[11px] text-red-400">
+                  {streakError}
+                </p>
+              )}
             </div>
-          </section>
-        )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={
+                  claimingStreak ||
+                  !streak ||
+                  !streak.canClaim
+                }
+                onClick={handleClaimStreak}
+                className={`rounded-full px-4 py-2 text-[11px] font-semibold ${
+                  claimingStreak ||
+                  !streak ||
+                  !streak.canClaim
+                    ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                    : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
+                }`}
+              >
+                {claimingStreak
+                  ? "Claiming..."
+                  : streak && streak.canClaim
+                  ? "Claim today's reward"
+                  : "Already claimed today"}
+              </button>
+            </div>
+          </div>
+          <p className="mt-2 text-[10px] text-slate-500">
+            Reward formula:{" "}
+            <span className="font-mono text-slate-300">
+              50 × current streak
+            </span>{" "}
+            coins each time you claim.
+          </p>
+        </section>
 
-        {/* Main tabs */}
+        {/* Starter packs card – shiny, glowing, clickable */}
+        <section className="rounded-2xl border border-emerald-500/40 bg-emerald-950/50 p-4 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold text-emerald-200">
+                Free Starter Packs
+              </p>
+              <p className="mt-1 text-[11px] text-emerald-100">
+                You can open up to{" "}
+                <span className="font-mono">2</span> free
+                Starter Packs to kickstart your club.
+              </p>
+              <p className="mt-1 text-[11px] text-emerald-200">
+                Opened so far:{" "}
+                <span className="font-mono">
+                  {starterPacksOpened ?? 0}
+                </span>{" "}
+                / 2
+              </p>
+              {starterMessage && (
+                <p className="mt-1 text-[11px] text-emerald-300">
+                  {starterMessage}
+                </p>
+              )}
+              {starterError && (
+                <p className="mt-1 text-[11px] text-red-400">
+                  {starterError}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={
+                  !starterAvailable ||
+                  starterPacksOpened === null
+                }
+                onClick={handleOpenStarterPack}
+                className={`relative rounded-full px-5 py-2 text-[11px] font-semibold transition transform ${
+                  !starterAvailable ||
+                  starterPacksOpened === null
+                    ? "bg-emerald-900 text-emerald-400/60 cursor-not-allowed border border-emerald-800"
+                    : "bg-emerald-400 text-slate-950 border border-emerald-300 shadow-lg shadow-emerald-400/60 hover:bg-emerald-300 hover:shadow-emerald-400/80 hover:-translate-y-0.5"
+                }`}
+              >
+                {starterAvailable
+                  ? "Open Free Starter Pack"
+                  : "All free packs claimed"}
+              </button>
+            </div>
+          </div>
+          <p className="mt-2 text-[10px] text-emerald-200/80">
+            Starter Packs contain random monsters from across
+            the league. After you’ve opened both, use your
+            coins to buy Bronze, Silver, or Gold packs.
+          </p>
+        </section>
+
         <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
           <h2 className="text-sm font-semibold text-slate-100 mb-3">
             Jump back into the action
@@ -452,7 +632,7 @@ export default function HomePage() {
               className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-400 transition-colors"
             >
               <p className="text-[11px] text-slate-400">
-                My Squads
+                Squad
               </p>
               <p className="mt-1 text-sm font-semibold text-slate-100">
                 Set Your 6-a-side Team
@@ -464,18 +644,18 @@ export default function HomePage() {
             </Link>
 
             <Link
-              href="/leaderboards"
+              href="/packs"
               className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-400 transition-colors"
             >
               <p className="text-[11px] text-slate-400">
-                Leaderboards
+                Packs
               </p>
               <p className="mt-1 text-sm font-semibold text-slate-100">
-                See How You Rank
+                Open Monster Packs
               </p>
               <p className="mt-1 text-[11px] text-slate-400">
-                Check global standings and your mini-leagues
-                for the latest gameweek.
+                Use coins to buy Bronze, Silver, and Gold
+                packs to grow your club.
               </p>
             </Link>
 
@@ -490,24 +670,24 @@ export default function HomePage() {
                 Trade Monsters
               </p>
               <p className="mt-1 text-[11px] text-slate-400">
-                Buy low, sell high, and target key monsters
-                for your tactics.
+                Buy low, sell high, and target key
+                monsters for your tactics.
               </p>
             </Link>
 
             <Link
-              href="/packs"
+              href="/leagues"
               className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-400 transition-colors"
             >
               <p className="text-[11px] text-slate-400">
-                Shop
+                Leagues
               </p>
               <p className="mt-1 text-sm font-semibold text-slate-100">
-                Buy Monster Packs
+                Join Mini-Leagues
               </p>
               <p className="mt-1 text-[11px] text-slate-400">
-                Use your coins to buy Bronze, Silver, and
-                Gold packs and grow your club.
+                Create or join private leagues and compete
+                with friends for bragging rights.
               </p>
             </Link>
           </div>
@@ -528,13 +708,50 @@ export default function HomePage() {
         </section>
       </main>
 
-      {/* Starter pack modal using same style as shop, but no redirect */}
-      {activeStarterModal && (
+      {/* Starter pack modal */}
+      {showStarterModal && (
         <PackOpenModal
           packId="starter"
-          onClose={handleStarterModalClose}
-          onOpened={() => handleStarterOpened()}
           redirectToSquad={false}
+          onClose={() => setShowStarterModal(false)}
+          onOpened={(monsters, coinsAfter) => {
+            // increment local starter pack count
+            setStarterPacksOpened(
+              (prev) => (prev ?? 0) + 1
+            );
+
+            const openedCount = monsters.length;
+
+            // Update coins + total monsters if we have coinsAfter
+            if (typeof coinsAfter === "number") {
+              setMe((prev) =>
+                prev
+                  ? { ...prev, coins: coinsAfter }
+                  : prev
+              );
+              setSummary((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      user: {
+                        ...prev.user,
+                        coins: coinsAfter,
+                      },
+                      monsters: {
+                        totalOwned:
+                          (prev.monsters
+                            ?.totalOwned ?? 0) +
+                          openedCount,
+                      },
+                    }
+                  : prev
+              );
+            }
+
+            setStarterMessage(
+              `You opened a free Starter Pack and pulled ${openedCount} monsters!`
+            );
+          }}
         />
       )}
     </>

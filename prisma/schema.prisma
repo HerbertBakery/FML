@@ -28,6 +28,18 @@ model User {
   listings           MarketListing[]
   transactionsBought MarketTransaction[]  @relation("Buyer")
   transactionsSold   MarketTransaction[]  @relation("Seller")
+
+  // NEW: squad builder challenges (SBCs)
+  squadChallengeSubmissions SquadChallengeSubmission[]
+
+  // NEW: objectives progress
+  objectiveProgresses       ObjectiveProgress[]
+
+  // NEW: daily streak (one row per user)
+  dailyStreak               DailyStreak?
+
+  // NEW: acts as "actor" in monster history (who found/evolved/sold/etc)
+  monsterHistoryEvents      MonsterHistoryEvent[] @relation("MonsterHistoryActor")
 }
 
 model UserMonster {
@@ -52,12 +64,21 @@ model UserMonster {
   totalCleanSheets   Int                  @default(0)
   totalFantasyPoints Int                  @default(0)
 
+  // NEW: consumed by SBC / other sinks, removed from active collection
+  isConsumed         Boolean              @default(false)
+
   squadSlots         SquadMonster[]
   gameweekSlots      GameweekEntryMonster[]
   evolutionEvents    EvolutionEvent[]
 
   marketListing      MarketListing?
   transactions       MarketTransaction[]
+
+  // NEW: used in SBC submissions
+  squadChallengeSlots SquadChallengeSubmissionMonster[]
+
+  // NEW: history of this monster (who found/evolved/sold/etc)
+  historyEvents      MonsterHistoryEvent[]
 }
 
 model PackOpen {
@@ -198,4 +219,127 @@ model MarketTransaction {
   userMonsterId String
   price         Int
   createdAt     DateTime        @default(now())
+}
+
+///////////////////////////////////////////////////////////
+// NEW: Squad Builder Challenges (FUT-style SBC)
+///////////////////////////////////////////////////////////
+
+// Template of a challenge, like "Premier League Attack" etc.
+model SquadChallengeTemplate {
+  id          String                        @id @default(cuid())
+  code        String                        @unique
+  name        String
+  description String
+  // Optional constraints (kept simple as strings/ints)
+  minMonsters Int                           @default(3)
+  minRarity   String?                       // e.g. "RARE"
+  requiredPosition String?                  // e.g. "FWD", or null for any
+  requiredClub     String?                  // e.g. "MCI", or null for any
+  requiredNation   String?                  // reserved if you ever add nations later
+  // Reward definition (coins / pack / special)
+  rewardType  String                        // "coins" | "pack" | "special"
+  rewardValue String                        // e.g. "500", or "gold", or some code
+  isActive    Boolean                       @default(true)
+  createdAt   DateTime                      @default(now())
+
+  submissions SquadChallengeSubmission[]
+}
+
+// A single user attempt/completion of a challenge
+model SquadChallengeSubmission {
+  id          String                           @id @default(cuid())
+  user        User                             @relation(fields: [userId], references: [id])
+  userId      String
+  challenge   SquadChallengeTemplate           @relation(fields: [challengeId], references: [id])
+  challengeId String
+  createdAt   DateTime                         @default(now())
+  completedAt DateTime?
+  // Once completed, those monsters are "consumed" (we'll delete or flag them in code)
+  monsters    SquadChallengeSubmissionMonster[]
+  rewardGranted Boolean                        @default(false)
+}
+
+// Join table: which specific monsters were turned in for the submission
+model SquadChallengeSubmissionMonster {
+  id            String                   @id @default(cuid())
+  submission    SquadChallengeSubmission @relation(fields: [submissionId], references: [id])
+  submissionId  String
+  userMonster   UserMonster              @relation(fields: [userMonsterId], references: [id])
+  userMonsterId String
+}
+
+///////////////////////////////////////////////////////////
+// NEW: Objectives system
+///////////////////////////////////////////////////////////
+
+// Template: defines an objective like "Open 3 packs", "Score 50 GW points"
+model ObjectiveTemplate {
+  id          String              @id @default(cuid())
+  code        String              @unique
+  name        String
+  description String
+  // e.g. "daily" | "weekly" | "season"
+  period      String
+  // Type: e.g. "open_packs", "score_points", "win_gameweeks"
+  type        String
+  targetValue Int                 @default(1)
+  // Reward: same convention as SBCs
+  rewardType  String              // "coins" | "pack" | "special"
+  rewardValue String
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+
+  progresses  ObjectiveProgress[]
+}
+
+// Per-user progress towards a given objective
+model ObjectiveProgress {
+  id            String            @id @default(cuid())
+  user          User              @relation(fields: [userId], references: [id])
+  userId        String
+  objective     ObjectiveTemplate @relation(fields: [objectiveId], references: [id])
+  objectiveId   String
+  currentValue  Int               @default(0)
+  completedAt   DateTime?
+  lastUpdatedAt DateTime          @default(now())
+
+  @@unique([userId, objectiveId])
+}
+
+///////////////////////////////////////////////////////////
+// NEW: Daily streak system
+///////////////////////////////////////////////////////////
+
+// Tracks daily login / daily claim streaks for a user
+model DailyStreak {
+  id            String   @id @default(cuid())
+  user          User     @relation(fields: [userId], references: [id])
+  userId        String   @unique
+  currentStreak Int      @default(0)
+  longestStreak Int      @default(0)
+  lastClaimedAt DateTime?
+  createdAt     DateTime @default(now())
+}
+
+///////////////////////////////////////////////////////////
+// NEW: Monster history events
+///////////////////////////////////////////////////////////
+
+// Tracks actions applied to a specific UserMonster over time,
+// e.g. who found it, who evolved it, who sold it, etc.
+model MonsterHistoryEvent {
+  id            String      @id @default(cuid())
+  userMonster   UserMonster @relation(fields: [userMonsterId], references: [id])
+  userMonsterId String
+
+  // The user performing the action (finder, evolver, seller, buyer, etc.)
+  actor         User        @relation("MonsterHistoryActor", fields: [actorUserId], references: [id])
+  actorUserId   String
+
+  // e.g. "CREATED", "EVOLVED", "SOLD", "BOUGHT"
+  action        String
+  description   String
+
+  createdAt     DateTime    @default(now())
 }

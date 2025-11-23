@@ -37,14 +37,16 @@ export async function GET(req: NextRequest) {
   const [monsters, starterPacksOpened] = await Promise.all([
     prisma.userMonster.findMany({
       where: { userId: user.id },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
     }),
     prisma.packOpen.count({
       where: {
         userId: user.id,
-        packType: "STARTER"
-      }
-    })
+        // IMPORTANT: must match what PackOpen stores:
+        // def.id === "starter"
+        packType: "starter",
+      },
+    }),
   ]);
 
   const result: CollectionResponse = {
@@ -59,9 +61,9 @@ export async function GET(req: NextRequest) {
       baseAttack: m.baseAttack,
       baseMagic: m.baseMagic,
       baseDefense: m.baseDefense,
-      evolutionLevel: m.evolutionLevel
+      evolutionLevel: m.evolutionLevel,
     })),
-    starterPacksOpened
+    starterPacksOpened,
   };
 
   return NextResponse.json(result);

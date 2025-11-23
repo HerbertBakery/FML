@@ -1,3 +1,4 @@
+// app/marketplace/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -139,20 +140,18 @@ export default function MarketplacePage() {
     }
 
     try {
-      const res = await fetch(
-        "/api/marketplace/list",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            monsterId,
-            price,
-          }),
-        }
-      );
+      const res = await fetch("/api/marketplace/list", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          // IMPORTANT: send userMonsterId, not monsterId
+          userMonsterId: monsterId,
+          price,
+        }),
+      });
 
       const data = (await res
         .json()
@@ -187,17 +186,14 @@ export default function MarketplacePage() {
     if (!confirmBuy) return;
 
     try {
-      const res = await fetch(
-        "/api/marketplace/buy",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({ listingId }),
-        }
-      );
+      const res = await fetch("/api/marketplace/buy", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ listingId }),
+      });
 
       const data = (await res
         .json()
