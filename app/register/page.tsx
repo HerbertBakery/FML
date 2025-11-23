@@ -1,3 +1,4 @@
+// app/register/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -5,9 +6,11 @@ import { useRouter } from "next/navigation";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] =
+    useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -19,9 +22,13 @@ export default function RegisterPage() {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({
+          email,
+          password,
+          username,
+        }),
       });
 
       const data = await res.json();
@@ -47,11 +54,39 @@ export default function RegisterPage() {
           Create your manager account
         </h2>
         <p className="text-xs text-slate-300 mb-4">
-          Sign up to start opening packs, collecting monsters, and
-          competing in Fantasy Monster League.
+          Sign up to start opening packs, collecting monsters,
+          and competing in Fantasy Monster League.
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-3"
+        >
+          <div className="space-y-1">
+            <label
+              htmlFor="username"
+              className="text-xs font-medium text-slate-200"
+            >
+              Username
+            </label>
+            <input
+              id="username"
+              type="text"
+              required
+              minLength={3}
+              maxLength={20}
+              value={username}
+              onChange={(e) =>
+                setUsername(e.target.value)
+              }
+              placeholder="e.g. monster_manager"
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400"
+            />
+            <p className="text-[10px] text-slate-500">
+              3–20 characters, letters/numbers/underscore.
+            </p>
+          </div>
+
           <div className="space-y-1">
             <label
               htmlFor="email"
@@ -64,7 +99,9 @@ export default function RegisterPage() {
               type="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400"
             />
           </div>
@@ -82,13 +119,17 @@ export default function RegisterPage() {
               required
               minLength={6}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) =>
+                setPassword(e.target.value)
+              }
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400"
             />
           </div>
 
           {error && (
-            <p className="text-xs text-red-400">{error}</p>
+            <p className="text-xs text-red-400">
+              {error}
+            </p>
           )}
 
           <button
@@ -100,7 +141,9 @@ export default function RegisterPage() {
                 : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
             }`}
           >
-            {loading ? "Creating account..." : "Sign Up"}
+            {loading
+              ? "Creating account..."
+              : "Sign Up"}
           </button>
         </form>
       </section>

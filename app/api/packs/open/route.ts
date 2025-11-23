@@ -262,8 +262,9 @@ function pickPlayersForPack(
   return result;
 }
 
+// NOTE: frontend sends { packId }, not { packType }
 type Body = {
-  packType?: PackId | string;
+  packId?: PackId | string;
 };
 
 export async function POST(req: NextRequest) {
@@ -282,8 +283,8 @@ export async function POST(req: NextRequest) {
     body = {};
   }
 
-  const packType = (body.packType as PackId) ?? "starter";
-  const def = getPackDefinition(packType);
+  const packId = (body.packId as PackId) ?? "starter";
+  const def = getPackDefinition(packId);
 
   if (!def) {
     return NextResponse.json(
@@ -303,7 +304,7 @@ export async function POST(req: NextRequest) {
         throw new Error("User not found.");
       }
 
-      // Starter pack limit
+      // Starter pack limit: max 2 total per user
       if (def.id === "starter") {
         const openedStarterCount = await tx.packOpen.count({
           where: {
@@ -318,7 +319,7 @@ export async function POST(req: NextRequest) {
           );
         }
       } else {
-        // Paid pack: check coins
+        // Paid pack: check coins (unlimited as long as you can afford)
         if (dbUser.coins < def.cost) {
           throw new Error(
             "Not enough coins to buy this pack."

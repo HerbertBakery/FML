@@ -15,6 +15,7 @@ model User {
   passwordHash       String?
   createdAt          DateTime             @default(now())
   coins              Int                  @default(1000)
+  username           String?              @unique
 
   monsters           UserMonster[]
   packOpens          PackOpen[]

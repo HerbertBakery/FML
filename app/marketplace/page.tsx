@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import MonsterCard from "@/components/MonsterCard";
 
 type User = {
   id: string;
@@ -25,7 +26,6 @@ type UserMonsterDTO = {
 
 type CollectionResponse = {
   monsters: UserMonsterDTO[];
-  starterPacksOpened: number;
 };
 
 type MarketListingDTO = {
@@ -44,15 +44,16 @@ export default function MarketplacePage() {
   const [user, setUser] = useState<User | null>(null);
   const [checkingUser, setCheckingUser] = useState(true);
 
-  const [collection, setCollection] = useState<UserMonsterDTO[]>([]);
-  const [marketListings, setMarketListings] = useState<
-    MarketListingDTO[]
-  >([]);
-  const [loadingMarket, setLoadingMarket] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<
-    string | null
-  >(null);
+  const [collection, setCollection] =
+    useState<UserMonsterDTO[]>([]);
+  const [marketListings, setMarketListings] =
+    useState<MarketListingDTO[]>([]);
+  const [loadingMarket, setLoadingMarket] =
+    useState(true);
+  const [error, setError] =
+    useState<string | null>(null);
+  const [actionMessage, setActionMessage] =
+    useState<string | null>(null);
 
   async function loadAll() {
     setError(null);
@@ -62,37 +63,47 @@ export default function MarketplacePage() {
 
     try {
       const [meRes, colRes, marketRes] = await Promise.all([
-        fetch("/api/auth/me", { credentials: "include" }),
+        fetch("/api/auth/me", {
+          credentials: "include",
+        }),
         fetch("/api/me/collection", {
-          credentials: "include"
+          credentials: "include",
         }),
         fetch("/api/marketplace", {
-          credentials: "include"
-        })
+          credentials: "include",
+        }),
       ]);
 
       if (!meRes.ok) {
         setUser(null);
         setCollection([]);
         setMarketListings([]);
-        setError("You must be logged in to use the marketplace.");
         return;
       }
 
-      const meData = await meRes.json();
-      setUser(meData.user);
+      const meJson = (await meRes.json()) as {
+        user: User | null;
+      };
+      setUser(meJson.user);
+
+      if (!meJson.user) {
+        setCollection([]);
+        setMarketListings([]);
+        return;
+      }
 
       if (colRes.ok) {
-        const colData: CollectionResponse = await colRes.json();
-        setCollection(colData.monsters);
+        const colJson =
+          (await colRes.json()) as CollectionResponse;
+        setCollection(colJson.monsters || []);
       } else {
         setCollection([]);
       }
 
       if (marketRes.ok) {
-        const marketData: MarketResponse =
-          await marketRes.json();
-        setMarketListings(marketData.listings || []);
+        const marketJson =
+          (await marketRes.json()) as MarketResponse;
+        setMarketListings(marketJson.listings || []);
       } else {
         setMarketListings([]);
       }
@@ -112,24 +123,6 @@ export default function MarketplacePage() {
     loadAll();
   }, []);
 
-  const myListings = useMemo(
-    () =>
-      user
-        ? marketListings.filter(
-            (l) => l.sellerId === user.id
-          )
-        : [],
-    [marketListings, user]
-  );
-
-  const listingsByMonsterId = useMemo(() => {
-    const map = new Map<string, MarketListingDTO>();
-    for (const l of marketListings) {
-      map.set(l.userMonster.id, l);
-    }
-    return map;
-  }, [marketListings]);
-
   async function handleListForSale(monsterId: string) {
     setActionMessage(null);
     setError(null);
@@ -146,23 +139,29 @@ export default function MarketplacePage() {
     }
 
     try {
-      const res = await fetch("/api/marketplace/list", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          userMonsterId: monsterId,
-          price
-        })
-      });
+      const res = await fetch(
+        "/api/marketplace/list",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            monsterId,
+            price,
+          }),
+        }
+      );
 
-      const data = await res.json().catch(() => null);
+      const data = (await res
+        .json()
+        .catch(() => null)) as { error?: string } | null;
 
       if (!res.ok) {
         const msg =
-          data?.error || "Failed to list monster for sale.";
+          data?.error ||
+          "Failed to list monster for sale.";
         setError(msg);
         window.alert(msg);
         return;
@@ -188,16 +187,21 @@ export default function MarketplacePage() {
     if (!confirmBuy) return;
 
     try {
-      const res = await fetch("/api/marketplace/buy", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        credentials: "include",
-        body: JSON.stringify({ listingId })
-      });
+      const res = await fetch(
+        "/api/marketplace/buy",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({ listingId }),
+        }
+      );
 
-      const data = await res.json().catch(() => null);
+      const data = (await res
+        .json()
+        .catch(() => null)) as { error?: string } | null;
 
       if (!res.ok) {
         const msg =
@@ -233,13 +237,17 @@ export default function MarketplacePage() {
   if (!user) {
     return (
       <main className="space-y-6">
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
-          <h2 className="text-xl font-semibold mb-2">
-            Sign in to access the marketplace
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
+          <h2 className="text-xl font-semibold mb-1">
+            Monster Marketplace
           </h2>
-          <p className="text-sm text-slate-300 mb-3">
-            Log in to buy and sell your monsterized Premier League
-            stars.
+          <p className="text-sm text-slate-300">
+            Log in or create an account to buy and sell
+            monsters.
+          </p>
+          <p className="text-xs text-slate-400">
+            The marketplace lets you trade monsterized
+            Premier League players using in-game coins.
           </p>
           <div className="flex gap-3">
             <Link
@@ -269,8 +277,8 @@ export default function MarketplacePage() {
               Monster Marketplace
             </h2>
             <p className="text-xs text-slate-400 mb-2">
-              Buy and sell monsterized Premier League players using
-              in-game coins.
+              Buy and sell monsterized Premier League
+              players using in-game coins.
             </p>
             <p className="text-xs text-emerald-300">
               Balance:{" "}
@@ -288,7 +296,9 @@ export default function MarketplacePage() {
           </button>
         </div>
         {error && (
-          <p className="mt-2 text-xs text-red-400">{error}</p>
+          <p className="mt-2 text-xs text-red-400">
+            {error}
+          </p>
         )}
         {actionMessage && (
           <p className="mt-2 text-xs text-emerald-300">
@@ -299,7 +309,7 @@ export default function MarketplacePage() {
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
         <h3 className="font-semibold text-slate-100 mb-1">
-          Browse Market
+          Listings
         </h3>
         {loadingMarket ? (
           <p className="text-xs text-slate-400">
@@ -307,8 +317,8 @@ export default function MarketplacePage() {
           </p>
         ) : marketListings.length === 0 ? (
           <p className="text-xs text-slate-400">
-            No monsters are listed for sale yet. Be the first to list
-            one!
+            No monsters are listed for sale yet. Be the
+            first to list one!
           </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-3">
@@ -318,29 +328,16 @@ export default function MarketplacePage() {
               const m = listing.userMonster;
 
               return (
-                <div
+                <MonsterCard
                   key={listing.id}
-                  className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold">
-                      {m.displayName}
-                    </span>
-                    <span className="text-[10px] uppercase text-emerald-300">
+                  monster={m}
+                  rightBadge={
+                    <span className="uppercase text-[10px] text-emerald-300">
                       {m.rarity}
                     </span>
-                  </div>
-                  <p className="text-[11px] text-slate-300">
-                    {m.realPlayerName} • {m.club}
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    {m.position} • ATK {m.baseAttack} • MAG{" "}
-                    {m.baseMagic} • DEF {m.baseDefense}
-                  </p>
-                  <p className="text-[10px] text-emerald-300 mt-1">
-                    Evo Lv. {m.evolutionLevel}
-                  </p>
-                  <p className="text-[11px] text-slate-200 mt-2">
+                  }
+                >
+                  <p className="text-[11px] text-slate-200 mt-1">
                     Price:{" "}
                     <span className="font-mono font-semibold">
                       {listing.price}
@@ -367,7 +364,7 @@ export default function MarketplacePage() {
                       </button>
                     )}
                   </div>
-                </div>
+                </MonsterCard>
               );
             })}
           </div>
@@ -380,8 +377,8 @@ export default function MarketplacePage() {
         </h3>
         {collection.length === 0 ? (
           <p className="text-xs text-slate-400">
-            You don&apos;t own any monsters yet. Open your starter
-            packs on the{" "}
+            You don&apos;t own any monsters yet. Open your
+            starter packs on the{" "}
             <Link
               href="/"
               className="underline underline-offset-2"
@@ -392,60 +389,21 @@ export default function MarketplacePage() {
           </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-3">
-            {collection.map((m) => {
-              const listing =
-                listingsByMonsterId.get(m.id);
-              const isListed =
-                !!listing &&
-                listing.sellerId === user.id;
-
-              return (
-                <div
-                  key={m.id}
-                  className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold">
-                      {m.displayName}
-                    </span>
-                    <span className="text-[10px] uppercase text-emerald-300">
-                      {m.rarity}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-300">
-                    {m.realPlayerName} • {m.club}
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    {m.position} • ATK {m.baseAttack} • MAG{" "}
-                    {m.baseMagic} • DEF {m.baseDefense}
-                  </p>
-                  <p className="text-[10px] text-emerald-300 mt-1">
-                    Evo Lv. {m.evolutionLevel}
-                  </p>
-                  <div className="mt-2">
-                    {isListed && listing ? (
-                      <p className="text-[10px] text-amber-300">
-                        Listed for{" "}
-                        <span className="font-mono">
-                          {listing.price}
-                        </span>{" "}
-                        coins
-                      </p>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleListForSale(m.id)
-                        }
-                        className="w-full rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
-                      >
-                        List for Sale
-                      </button>
-                    )}
-                  </div>
+            {collection.map((m) => (
+              <MonsterCard key={m.id} monster={m}>
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleListForSale(m.id)
+                    }
+                    className="w-full rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
+                  >
+                    List for Sale
+                  </button>
                 </div>
-              );
-            })}
+              </MonsterCard>
+            ))}
           </div>
         )}
       </section>

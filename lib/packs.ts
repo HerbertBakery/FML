@@ -19,7 +19,7 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
       "Free intro pack with a mix of common monsters to get your squad going.",
     cost: 0,
     size: 4,
-    rarityBias: "normal"
+    rarityBias: "normal",
   },
   {
     id: "bronze",
@@ -28,7 +28,7 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
       "Budget pack with mostly common monsters and a small chance of rares.",
     cost: 400,
     size: 4,
-    rarityBias: "normal"
+    rarityBias: "normal",
   },
   {
     id: "silver",
@@ -37,7 +37,7 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
       "Solid pack with better odds of rare and epic monsters.",
     cost: 900,
     size: 5,
-    rarityBias: "premium"
+    rarityBias: "premium",
   },
   {
     id: "gold",
@@ -46,8 +46,8 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
       "Top-tier pack with boosted odds of epic and legendary monsters.",
     cost: 1800,
     size: 6,
-    rarityBias: "premium"
-  }
+    rarityBias: "premium",
+  },
 ];
 
 export function getPackDefinition(

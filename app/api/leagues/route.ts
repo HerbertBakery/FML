@@ -28,18 +28,95 @@ export async function GET(req: NextRequest) {
     where: { userId: user.id },
     include: {
       league: {
-        include: { owner: true }
+        include: {
+          owner: true,
+          memberships: true,
+          _count: {
+            select: { memberships: true }
+          }
+        }
       }
     },
     orderBy: { createdAt: "asc" }
   });
 
-  const leagues = memberships.map((m) => ({
-    id: m.league.id,
-    name: m.league.name,
-    code: m.league.code,
-    ownerEmail: m.league.owner.email
-  }));
+  if (memberships.length === 0) {
+    return NextResponse.json({ leagues: [] });
+  }
+
+  // Find latest gameweek that has any scores at all (same logic as other leaderboards)
+  const latestGw = await prisma.gameweek.findFirst({
+    where: {
+      scores: {
+        some: {}
+      }
+    },
+    orderBy: {
+      number: "desc"
+    }
+  });
+
+  let scoreByUser = new Map<string, number>();
+
+  if (latestGw) {
+    // All userIds that appear in any of the leagues this user is in
+    const allUserIds = Array.from(
+      new Set(
+        memberships.flatMap((m) =>
+          m.league.memberships.map((lm) => lm.userId)
+        )
+      )
+    );
+
+    if (allUserIds.length > 0) {
+      const scores = await prisma.userGameweekScore.findMany({
+        where: {
+          gameweekId: latestGw.id,
+          userId: { in: allUserIds }
+        }
+      });
+
+      for (const s of scores) {
+        scoreByUser.set(s.userId, s.points);
+      }
+    }
+  }
+
+  const leagues = memberships.map((m) => {
+    const league = m.league;
+    const memberIds = league.memberships.map((lm) => lm.userId);
+
+    let myRank: number | null = null;
+
+    if (latestGw && memberIds.length > 0) {
+      const ranking = memberIds
+        .map((userId) => ({
+          userId,
+          points: scoreByUser.get(userId) ?? 0
+        }))
+        .sort((a, b) => b.points - a.points);
+
+      const idx = ranking.findIndex(
+        (row) => row.userId === user.id
+      );
+      if (idx !== -1) {
+        myRank = idx + 1;
+      }
+    }
+
+    const memberCount =
+      league._count?.memberships ?? league.memberships.length;
+
+    return {
+      id: league.id,
+      name: league.name,
+      code: league.code,
+      ownerEmail: league.owner.email,
+      isOwner: league.ownerId === user.id,
+      memberCount,
+      myRank
+    };
+  });
 
   return NextResponse.json({ leagues });
 }

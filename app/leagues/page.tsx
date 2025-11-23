@@ -8,6 +8,9 @@ type League = {
   name: string;
   code: string;
   ownerEmail: string;
+  isOwner: boolean;
+  memberCount: number;
+  myRank: number | null;
 };
 
 type ListResponse = {
@@ -146,6 +149,41 @@ export default function LeaguesPage() {
     }
   }
 
+  async function handleLeaveLeague(league: League) {
+    setError(null);
+
+    const confirmed = window.confirm(
+      `Leave "${league.name}"? You can re-join later with the league code if you have it.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch("/api/leagues/leave", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        credentials: "include",
+        body: JSON.stringify({ leagueId: league.id })
+      });
+
+      const data = (await res
+        .json()
+        .catch(() => null)) as { error?: string } | null;
+
+      if (!res.ok) {
+        setError(
+          data?.error || "Failed to leave league."
+        );
+        return;
+      }
+
+      await loadLeagues();
+    } catch {
+      setError("Failed to leave league.");
+    }
+  }
+
   return (
     <main className="space-y-6">
       <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
@@ -153,67 +191,68 @@ export default function LeaguesPage() {
           Mini Leagues
         </h2>
         <p className="text-sm text-slate-300">
-          Create a private league for your friends or join one with a
-          code. League tables use the same gameweek scores as the
-          global leaderboard.
+          Create private mini-leagues with your friends and compete
+          on the same scoring system as the global leaderboard.
         </p>
-      </section>
 
-      <section className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-          <h3 className="font-semibold text-slate-100">
-            Create a League
-          </h3>
-          <p className="text-xs text-slate-400">
-            You&apos;ll get a unique code to share with your friends.
-          </p>
-          <input
-            type="text"
-            value={createName}
-            onChange={(e) => setCreateName(e.target.value)}
-            placeholder="League name"
-            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-50"
-          />
-          <button
-            type="button"
-            onClick={handleCreateLeague}
-            className="rounded-full bg-emerald-400 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-300"
-          >
-            Create League
-          </button>
-          {createStatus && (
-            <p className="text-xs text-emerald-300">
-              {createStatus}
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+            <h3 className="font-semibold text-slate-100">
+              Create a League
+            </h3>
+            <p className="text-xs text-slate-400">
+              You&apos;ll be the owner and automatically added as a
+              member. Share the code so your friends can join.
             </p>
-          )}
-        </div>
+            <input
+              type="text"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              placeholder="League name"
+              className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-50"
+            />
+            <button
+              type="button"
+              onClick={handleCreateLeague}
+              className="rounded-full bg-emerald-400 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-300"
+            >
+              Create League
+            </button>
+            {createStatus && (
+              <p className="text-xs text-emerald-300">
+                {createStatus}
+              </p>
+            )}
+          </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-          <h3 className="font-semibold text-slate-100">
-            Join a League
-          </h3>
-          <p className="text-xs text-slate-400">
-            Ask your friend for their league code and enter it here.
-          </p>
-          <input
-            type="text"
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value)}
-            placeholder="ABC123"
-            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-50 uppercase"
-          />
-          <button
-            type="button"
-            onClick={handleJoinLeague}
-            className="rounded-full bg-sky-400 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-sky-300"
-          >
-            Join League
-          </button>
-          {joinStatus && (
-            <p className="text-xs text-emerald-300">
-              {joinStatus}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+            <h3 className="font-semibold text-slate-100">
+              Join a League
+            </h3>
+            <p className="text-xs text-slate-400">
+              Ask your friend for their league code and enter it
+              here.
             </p>
-          )}
+            <input
+              type="text"
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value)}
+              placeholder="League code (e.g. ABC123)"
+              className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-50"
+            />
+            <button
+              type="button"
+              onClick={handleJoinLeague}
+              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-200"
+            >
+              Join League
+            </button>
+            {joinStatus && (
+              <p className="text-xs text-emerald-300">
+                {joinStatus}
+              </p>
+            )}
+          </div>
         </div>
       </section>
 
@@ -237,26 +276,51 @@ export default function LeaguesPage() {
             {leagues.map((league) => (
               <li
                 key={league.id}
-                className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
               >
-                <div>
+                <div className="space-y-0.5">
                   <div className="font-semibold text-slate-100">
                     {league.name}
+                    {league.isOwner && (
+                      <span className="ml-2 rounded-full border border-amber-400/70 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                        Owner
+                      </span>
+                    )}
                   </div>
                   <div className="text-[11px] text-slate-400">
                     Code:{" "}
                     <span className="font-mono">
                       {league.code}
                     </span>{" "}
-                    • Owner: {league.ownerEmail}
+                    • Owner:{" "}
+                    {league.isOwner
+                      ? "You"
+                      : league.ownerEmail}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Members: {league.memberCount} • Your rank:{" "}
+                    {league.myRank
+                      ? `#${league.myRank}`
+                      : "— (no scores yet)"}
                   </div>
                 </div>
-                <Link
-                  href={`/leagues/${league.id}`}
-                  className="rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
-                >
-                  View Table
-                </Link>
+                <div className="flex flex-col items-end gap-1">
+                  <Link
+                    href={`/leagues/${league.id}`}
+                    className="rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
+                  >
+                    View Table
+                  </Link>
+                  {!league.isOwner && (
+                    <button
+                      type="button"
+                      onClick={() => handleLeaveLeague(league)}
+                      className="text-[10px] text-red-400 hover:text-red-300"
+                    >
+                      Leave league
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

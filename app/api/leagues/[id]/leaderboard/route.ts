@@ -48,67 +48,61 @@ export async function GET(
     );
   }
 
-  // Find the latest gameweek that has scores (or active)
+  // Latest gameweek that has *any* scores recorded (global)
   const latestGw = await prisma.gameweek.findFirst({
     where: {
       scores: {
         some: {}
       }
     },
-    orderBy: { number: "desc" }
-  });
-
-  if (!latestGw) {
-    return NextResponse.json(
-      {
-        league: {
-          id: league.id,
-          name: league.name,
-          code: league.code
-        },
-        gameweek: null,
-        scores: []
-      },
-      { status: 200 }
-    );
-  }
-
-  const userIds = league.memberships.map((m) => m.userId);
-
-  const scores = await prisma.userGameweekScore.findMany({
-    where: {
-      gameweekId: latestGw.id,
-      userId: { in: userIds }
-    },
-    include: {
-      user: true
-    },
     orderBy: {
-      points: "desc"
+      number: "desc"
     }
   });
 
-  const result = scores.map((s) => ({
-    userId: s.userId,
-    email: s.user.email,
-    points: s.points
-  }));
+  const memberIds = league.memberships.map((m) => m.userId);
+  let scoreByUser = new Map<string, number>();
+
+  if (latestGw && memberIds.length > 0) {
+    const scores = await prisma.userGameweekScore.findMany({
+      where: {
+        gameweekId: latestGw.id,
+        userId: { in: memberIds }
+      }
+    });
+
+    for (const s of scores) {
+      scoreByUser.set(s.userId, s.points);
+    }
+  }
+
+  const result = league.memberships
+    .map((m) => ({
+      userId: m.userId,
+      email: m.user.email,
+      points: scoreByUser.get(m.userId) ?? 0
+    }))
+    .sort((a, b) => b.points - a.points);
+
+  const ownerMembership = league.memberships.find(
+    (m) => m.userId === league.ownerId
+  );
 
   return NextResponse.json({
     league: {
       id: league.id,
       name: league.name,
       code: league.code,
-      ownerEmail: league.memberships.find(
-        (m) => m.userId === league.ownerId
-      )?.user.email
+      ownerEmail: ownerMembership?.user.email
     },
-    gameweek: {
-      id: latestGw.id,
-      number: latestGw.number,
-      name: latestGw.name,
-      deadlineAt: latestGw.deadlineAt
-    },
+    gameweek: latestGw
+      ? {
+        id: latestGw.id,
+        number: latestGw.number,
+        name: latestGw.name ?? null,
+        deadlineAt: latestGw.deadlineAt
+      }
+      : null,
     scores: result
   });
 }
