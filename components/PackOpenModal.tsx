@@ -371,8 +371,8 @@ const PackOpenModal: React.FC<Props> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
-      <div className="relative w-full max-w-5xl rounded-3xl bg-slate-950/80 ring-1 ring-white/10 backdrop-blur-xl p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 sm:p-6 overflow-y-auto">
+      <div className="relative w-full max-w-5xl rounded-3xl bg-slate-950/80 ring-1 ring-white/10 backdrop-blur-xl p-6 flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-semibold">
@@ -386,118 +386,120 @@ const PackOpenModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Body */}
-        <div className="mt-6 grid place-items-center">
-          {phase === "error" && (
-            <div className="text-red-400 text-sm">
-              {err}
-            </div>
-          )}
-
-          {phase === "buying" && (
-            <div className="flex flex-col items-center gap-4 text-slate-300">
-              <div className="animate-spin h-8 w-8 border-2 border-slate-600 border-t-transparent rounded-full" />
-              <div>Purchasing pack…</div>
-            </div>
-          )}
-
-          <AnimatePresence>
-            {phase === "ready" && (
-              <motion.div
-                key="pack"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{
-                  type: "spring",
-                  stiffness: 120,
-                  damping: 16,
-                }}
-              >
-                <PackVisual
-                  theme={theme}
-                  onOpen={openPack}
-                />
-              </motion.div>
+        {/* Body (scrollable on mobile) */}
+        <div className="mt-6 flex-1 overflow-y-auto">
+          <div className="grid place-items-center">
+            {phase === "error" && (
+              <div className="text-red-400 text-sm">
+                {err}
+              </div>
             )}
-          </AnimatePresence>
 
-          {phase === "opening" && (
-            <div className="relative w-60 h-80">
-              {/* faint pack underlay */}
-              <motion.div
-                className="absolute inset-0"
-                initial={{ opacity: 1 }}
-                animate={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <PackVisual
-                  theme={theme}
-                  onOpen={() => {}}
-                  disabled
-                />
-              </motion.div>
-              {/* shred halves */}
-              <motion.div
-                className="absolute top-0 left-0 right-0 h-1/2"
-                initial={{
-                  opacity: 0,
-                  rotate: 0,
-                  x: 0,
-                  y: 0,
-                }}
-                animate={{
-                  opacity: 1,
-                  rotate: -18,
-                  x: -80,
-                  y: -100,
-                }}
-                transition={{
-                  duration: 0.5,
-                  ease: "easeOut",
-                }}
-              >
-                <div
-                  className={`w-full h-full rounded-t-3xl ${theme.shredTop}`}
-                />
-              </motion.div>
-              <motion.div
-                className="absolute bottom-0 left-0 right-0 h-1/2"
-                initial={{
-                  opacity: 0,
-                  rotate: 0,
-                  x: 0,
-                  y: 0,
-                }}
-                animate={{
-                  opacity: 1,
-                  rotate: 18,
-                  x: 80,
-                  y: 100,
-                }}
-                transition={{
-                  duration: 0.5,
-                  ease: "easeOut",
-                }}
-              >
-                <div
-                  className={`w-full h-full rounded-b-3xl ${theme.shredBottom}`}
-                />
-              </motion.div>
-            </div>
-          )}
+            {phase === "buying" && (
+              <div className="flex flex-col items-center gap-4 text-slate-300">
+                <div className="animate-spin h-8 w-8 border-2 border-slate-600 border-t-transparent rounded-full" />
+                <div>Purchasing pack…</div>
+              </div>
+            )}
 
-          {phase === "revealed" && (
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-6">
-              {monsters?.map((m, i) => (
-                <MonsterRevealCard
-                  key={m.id}
-                  monster={m}
-                  delay={i * 0.12}
-                />
-              ))}
-            </div>
-          )}
+            <AnimatePresence>
+              {phase === "ready" && (
+                <motion.div
+                  key="pack"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 120,
+                    damping: 16,
+                  }}
+                >
+                  <PackVisual
+                    theme={theme}
+                    onOpen={openPack}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {phase === "opening" && (
+              <div className="relative w-60 h-80">
+                {/* faint pack underlay */}
+                <motion.div
+                  className="absolute inset-0"
+                  initial={{ opacity: 1 }}
+                  animate={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <PackVisual
+                    theme={theme}
+                    onOpen={() => {}}
+                    disabled
+                  />
+                </motion.div>
+                {/* shred halves */}
+                <motion.div
+                  className="absolute top-0 left-0 right-0 h-1/2"
+                  initial={{
+                    opacity: 0,
+                    rotate: 0,
+                    x: 0,
+                    y: 0,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    rotate: -18,
+                    x: -80,
+                    y: -100,
+                  }}
+                  transition={{
+                    duration: 0.5,
+                    ease: "easeOut",
+                  }}
+                >
+                  <div
+                    className={`w-full h-full rounded-t-3xl ${theme.shredTop}`}
+                  />
+                </motion.div>
+                <motion.div
+                  className="absolute bottom-0 left-0 right-0 h-1/2"
+                  initial={{
+                    opacity: 0,
+                    rotate: 0,
+                    x: 0,
+                    y: 0,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    rotate: 18,
+                    x: 80,
+                    y: 100,
+                  }}
+                  transition={{
+                    duration: 0.5,
+                    ease: "easeOut",
+                  }}
+                >
+                  <div
+                    className={`w-full h-full rounded-b-3xl ${theme.shredBottom}`}
+                  />
+                </motion.div>
+              </div>
+            )}
+
+            {phase === "revealed" && (
+              <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-6">
+                {monsters?.map((m, i) => (
+                  <MonsterRevealCard
+                    key={m.id}
+                    monster={m}
+                    delay={i * 0.12}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer */}
