@@ -15,8 +15,10 @@ type ChallengeSummary = {
   requiredClub: string | null;
   rewardType: string;
   rewardValue: string;
+  isRepeatable: boolean;
   isActive: boolean;
   completedCount: number;
+  canSubmit: boolean;
 };
 
 type ChallengesResponse = {
@@ -26,8 +28,10 @@ type ChallengesResponse = {
 
 export default function ChallengesPage() {
   const [loading, setLoading] = useState(true);
-  const [challenges, setChallenges] = useState<ChallengeSummary[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [challenges, setChallenges] =
+    useState<ChallengeSummary[]>([]);
+  const [error, setError] =
+    useState<string | null>(null);
 
   async function loadChallenges() {
     setLoading(true);
@@ -35,13 +39,16 @@ export default function ChallengesPage() {
 
     try {
       const res = await fetch("/api/challenges", {
-        credentials: "include"
+        credentials: "include",
       });
 
-      const data = (await res.json()) as ChallengesResponse;
+      const data =
+        (await res.json()) as ChallengesResponse;
 
       if (!res.ok) {
-        setError(data.error || "Failed to load challenges.");
+        setError(
+          data.error || "Failed to load challenges."
+        );
         setChallenges([]);
         return;
       }
@@ -75,7 +82,9 @@ export default function ChallengesPage() {
     return (
       <main className="space-y-6">
         <section className="rounded-2xl border border-red-500/40 bg-red-900/30 p-5">
-          <p className="text-sm text-red-100">{error}</p>
+          <p className="text-sm text-red-100">
+            {error}
+          </p>
         </section>
       </main>
     );
@@ -88,8 +97,9 @@ export default function ChallengesPage() {
           Squad Builder Challenges
         </h1>
         <p className="text-xs text-slate-400">
-          Turn in selected monsters from your collection to earn rewards
-          and clean up your club, just like FUT SBCs.
+          Turn in selected monsters from your collection to
+          earn rewards and clean up your club, just like FUT
+          SBCs.
         </p>
       </section>
 
@@ -109,10 +119,28 @@ export default function ChallengesPage() {
                   : `${c.rewardType} (${c.rewardValue})`;
 
               const constraints: string[] = [];
-              if (c.minMonsters > 0) constraints.push(`At least ${c.minMonsters} monsters`);
-              if (c.requiredPosition) constraints.push(`Includes a ${c.requiredPosition}`);
-              if (c.requiredClub) constraints.push(`Includes a player from ${c.requiredClub}`);
-              if (c.minRarity) constraints.push(`All at least ${c.minRarity} rarity`);
+              if (c.minMonsters > 0)
+                constraints.push(
+                  `At least ${c.minMonsters} monsters`
+                );
+              if (c.requiredPosition)
+                constraints.push(
+                  `Includes a ${c.requiredPosition}`
+                );
+              if (c.requiredClub)
+                constraints.push(
+                  `Includes a player from ${c.requiredClub}`
+                );
+              if (c.minRarity)
+                constraints.push(
+                  `All at least ${c.minRarity} rarity`
+                );
+
+              const isOneTime = !c.isRepeatable;
+              const isCompletedOnce =
+                c.completedCount > 0;
+              const isLocked =
+                isOneTime && isCompletedOnce;
 
               return (
                 <div
@@ -128,11 +156,26 @@ export default function ChallengesPage() {
                         {c.description}
                       </p>
                     </div>
-                    {c.completedCount > 0 && (
-                      <span className="rounded-full bg-emerald-500/10 border border-emerald-400 text-[10px] px-2 py-0.5 text-emerald-300">
-                        Completed {c.completedCount}x
+                    <div className="flex flex-col items-end gap-1">
+                      {c.completedCount > 0 && (
+                        <span className="rounded-full bg-emerald-500/10 border border-emerald-400 text-[10px] px-2 py-0.5 text-emerald-300">
+                          {c.isRepeatable
+                            ? `Completed ${c.completedCount}x`
+                            : "Completed"}
+                        </span>
+                      )}
+                      <span
+                        className={`rounded-full text-[10px] px-2 py-0.5 border ${
+                          c.isRepeatable
+                            ? "bg-sky-500/10 border-sky-400 text-sky-300"
+                            : "bg-slate-800 border-slate-500 text-slate-200"
+                        }`}
+                      >
+                        {c.isRepeatable
+                          ? "Repeatable"
+                          : "One-time"}
                       </span>
-                    )}
+                    </div>
                   </div>
 
                   {constraints.length > 0 && (
@@ -149,12 +192,22 @@ export default function ChallengesPage() {
                   </p>
 
                   <div className="mt-2 flex justify-end">
-                    <Link
-                      href={`/challenges/${c.id}`}
-                      className="rounded-full bg-emerald-400 text-slate-950 px-3 py-1 text-[11px] font-semibold hover:bg-emerald-300"
-                    >
-                      Build Squad
-                    </Link>
+                    {isLocked ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-full bg-slate-800 text-slate-500 px-3 py-1 text-[11px] font-semibold cursor-not-allowed"
+                      >
+                        Completed (one-time)
+                      </button>
+                    ) : (
+                      <Link
+                        href={`/challenges/${c.id}`}
+                        className="rounded-full bg-emerald-400 text-slate-950 px-3 py-1 text-[11px] font-semibold hover:bg-emerald-300"
+                      >
+                        Build Squad
+                      </Link>
+                    )}
                   </div>
                 </div>
               );

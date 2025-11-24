@@ -43,22 +43,21 @@ export async function POST(req: NextRequest) {
         where: { id: listingId },
         include: {
           seller: true,
-          userMonster: true
-        }
+          userMonster: true,
+        },
       });
 
       if (!listing || !listing.isActive) {
         throw new Error("Listing not available.");
       }
 
+      // Prevent buying your own listing
       if (listing.sellerId === user.id) {
-        throw new Error(
-          "You cannot buy your own listing."
-        );
+        throw new Error("You cannot buy your own listing.");
       }
 
       const buyer = await tx.user.findUnique({
-        where: { id: user.id }
+        where: { id: user.id },
       });
 
       if (!buyer) {
@@ -71,61 +70,68 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // Mark listing inactive so it no longer appears in /api/marketplace
       await tx.marketListing.update({
         where: { id: listing.id },
         data: {
-          isActive: false
-        }
+          isActive: false,
+        },
       });
 
+      // Atomic coin updates
       await tx.user.update({
         where: { id: buyer.id },
         data: {
-          coins: buyer.coins - listing.price
-        }
+          coins: { decrement: listing.price },
+        },
       });
 
       await tx.user.update({
         where: { id: listing.sellerId },
         data: {
-          coins: listing.seller.coins + listing.price
-        }
+          coins: { increment: listing.price },
+        },
       });
 
+      // Transfer monster ownership
       await tx.userMonster.update({
         where: { id: listing.userMonsterId },
         data: {
-          userId: buyer.id
-        }
+          userId: buyer.id,
+        },
       });
 
+      // Record transaction
       await tx.marketTransaction.create({
         data: {
           listingId: listing.id,
           buyerId: buyer.id,
           sellerId: listing.sellerId,
           userMonsterId: listing.userMonsterId,
-          price: listing.price
-        }
+          price: listing.price,
+        },
       });
 
       return {
         listingId: listing.id,
-        price: listing.price
+        price: listing.price,
       };
     });
 
-    return NextResponse.json({
-      message: "Purchase successful.",
-      ...result
-    });
+    return NextResponse.json(
+      {
+        message: "Purchase successful.",
+        ...result,
+      },
+      { status: 200 }
+    );
   } catch (err: any) {
     console.error("Error buying listing:", err);
     return NextResponse.json(
       {
         error:
           err?.message ||
-          "Failed to complete purchase."
+          "Failed to complete purchase.",
       },
       { status: 400 }
     );

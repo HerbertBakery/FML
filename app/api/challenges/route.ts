@@ -17,22 +17,31 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const templates = await prisma.squadChallengeTemplate.findMany({
-      where: { isActive: true },
-      orderBy: { createdAt: "asc" },
-      include: {
-        submissions: {
-          where: { userId: user.id },
-          select: { id: true, completedAt: true, createdAt: true }
-        }
-      }
-    });
+    const templates =
+      await prisma.squadChallengeTemplate.findMany({
+        where: { isActive: true },
+        orderBy: { createdAt: "asc" },
+        include: {
+          submissions: {
+            where: { userId: user.id },
+            select: {
+              id: true,
+              completedAt: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
 
     const data = templates.map((t) => {
       const userSubs = t.submissions;
       const completedCount = userSubs.filter(
         (s) => s.completedAt !== null
       ).length;
+
+      const completedOnce = completedCount > 0;
+      const canSubmit =
+        t.isRepeatable || !completedOnce;
 
       return {
         id: t.id,
@@ -45,9 +54,11 @@ export async function GET(req: NextRequest) {
         requiredClub: t.requiredClub,
         rewardType: t.rewardType,
         rewardValue: t.rewardValue,
+        isRepeatable: t.isRepeatable,
         isActive: t.isActive,
         createdAt: t.createdAt,
-        completedCount
+        completedCount,
+        canSubmit,
       };
     });
 

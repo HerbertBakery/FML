@@ -63,17 +63,18 @@ export default function MarketplacePage() {
     setLoadingMarket(true);
 
     try {
-      const [meRes, colRes, marketRes] = await Promise.all([
-        fetch("/api/auth/me", {
-          credentials: "include",
-        }),
-        fetch("/api/me/collection", {
-          credentials: "include",
-        }),
-        fetch("/api/marketplace", {
-          credentials: "include",
-        }),
-      ]);
+      const [meRes, colRes, marketRes] =
+        await Promise.all([
+          fetch("/api/auth/me", {
+            credentials: "include",
+          }),
+          fetch("/api/me/collection", {
+            credentials: "include",
+          }),
+          fetch("/api/marketplace", {
+            credentials: "include",
+          }),
+        ]);
 
       if (!meRes.ok) {
         setUser(null);
@@ -122,6 +123,7 @@ export default function MarketplacePage() {
 
   useEffect(() => {
     loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleListForSale(monsterId: string) {
@@ -140,18 +142,21 @@ export default function MarketplacePage() {
     }
 
     try {
-      const res = await fetch("/api/marketplace/list", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          // IMPORTANT: send userMonsterId, not monsterId
-          userMonsterId: monsterId,
-          price,
-        }),
-      });
+      const res = await fetch(
+        "/api/marketplace/list",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            userMonsterId: monsterId,
+            monsterId, // extra compatibility
+            price,
+          }),
+        }
+      );
 
       const data = (await res
         .json()
@@ -186,14 +191,17 @@ export default function MarketplacePage() {
     if (!confirmBuy) return;
 
     try {
-      const res = await fetch("/api/marketplace/buy", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({ listingId }),
-      });
+      const res = await fetch(
+        "/api/marketplace/buy",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({ listingId }),
+        }
+      );
 
       const data = (await res
         .json()
@@ -303,6 +311,7 @@ export default function MarketplacePage() {
         )}
       </section>
 
+      {/* Listings */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
         <h3 className="font-semibold text-slate-100 mb-1">
           Listings
@@ -367,6 +376,7 @@ export default function MarketplacePage() {
         )}
       </section>
 
+      {/* Your monsters */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
         <h3 className="font-semibold text-slate-100 mb-1">
           Your Monsters

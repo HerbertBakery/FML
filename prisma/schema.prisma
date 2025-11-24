@@ -240,6 +240,7 @@ model SquadChallengeTemplate {
   // Reward definition (coins / pack / special)
   rewardType  String                        // "coins" | "pack" | "special"
   rewardValue String                        // e.g. "500", or "gold", or some code
+  isRepeatable Boolean                      @default(true)
   isActive    Boolean                       @default(true)
   createdAt   DateTime                      @default(now())
 

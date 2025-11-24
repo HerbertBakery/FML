@@ -15,6 +15,7 @@ type Challenge = {
   requiredClub: string | null;
   rewardType: string;
   rewardValue: string;
+  isRepeatable: boolean;
   isActive: boolean;
   createdAt: string;
 };
@@ -35,9 +36,12 @@ export default function AdminChallengesPage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const [challenges, setChallenges] = useState<Challenge[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [challenges, setChallenges] =
+    useState<Challenge[]>([]);
+  const [error, setError] =
+    useState<string | null>(null);
+  const [formError, setFormError] =
+    useState<string | null>(null);
   const [formSuccess, setFormSuccess] =
     useState<string | null>(null);
 
@@ -60,6 +64,8 @@ export default function AdminChallengesPage() {
     useState("coins");
   const [rewardValue, setRewardValue] =
     useState("");
+  const [isRepeatable, setIsRepeatable] =
+    useState<boolean>(true);
   const [isActive, setIsActive] =
     useState<boolean>(true);
 
@@ -74,6 +80,7 @@ export default function AdminChallengesPage() {
     setRequiredClub("");
     setRewardType("coins");
     setRewardValue("");
+    setIsRepeatable(true);
     setIsActive(true);
     setFormError(null);
     setFormSuccess(null);
@@ -122,6 +129,11 @@ export default function AdminChallengesPage() {
     setRequiredClub(c.requiredClub || "");
     setRewardType(c.rewardType || "coins");
     setRewardValue(c.rewardValue || "");
+    setIsRepeatable(
+      typeof c.isRepeatable === "boolean"
+        ? c.isRepeatable
+        : true
+    );
     setIsActive(c.isActive);
     setFormError(null);
     setFormSuccess(null);
@@ -160,9 +172,7 @@ export default function AdminChallengesPage() {
     setFormSuccess(null);
 
     if (!code.trim() || !name.trim()) {
-      setFormError(
-        "Code and name are required."
-      );
+      setFormError("Code and name are required.");
       return;
     }
     if (!rewardType.trim() || !rewardValue.trim()) {
@@ -190,6 +200,7 @@ export default function AdminChallengesPage() {
           requiredClub.trim() || null,
         rewardType: rewardType.trim(),
         rewardValue: rewardValue.trim(),
+        isRepeatable,
         isActive,
       };
 
@@ -279,8 +290,8 @@ export default function AdminChallengesPage() {
               Admin – Squad Builder Challenges
             </h1>
             <p className="text-xs text-slate-400">
-              Create and manage SBC templates that
-              appear on the public{" "}
+              Create and manage SBC templates that appear
+              on the public{" "}
               <span className="font-mono">
                 /challenges
               </span>{" "}
@@ -316,8 +327,8 @@ export default function AdminChallengesPage() {
           </p>
         ) : challenges.length === 0 ? (
           <p className="text-xs text-slate-400">
-            No challenges yet. Create one using the
-            form below.
+            No challenges yet. Create one using the form
+            below.
           </p>
         ) : (
           <div className="space-y-2 max-h-72 overflow-auto pr-1">
@@ -341,6 +352,11 @@ export default function AdminChallengesPage() {
                       {c.code} • Reward: {c.rewardType}(
                       {c.rewardValue}) • min{" "}
                       {c.minMonsters}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      {c.isRepeatable
+                        ? "Repeatable"
+                        : "One-time"}
                     </p>
                   </div>
                   <span
@@ -457,9 +473,7 @@ export default function AdminChallengesPage() {
               }
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
             >
-              <option value="">
-                None
-              </option>
+              <option value="">None</option>
               <option value="COMMON">
                 COMMON
               </option>
@@ -482,25 +496,17 @@ export default function AdminChallengesPage() {
             <select
               value={requiredPosition}
               onChange={(e) =>
-                setRequiredPosition(e.target.value)
+                setRequiredPosition(
+                  e.target.value
+                )
               }
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
             >
-              <option value="">
-                Any
-              </option>
-              <option value="GK">
-                GK
-              </option>
-              <option value="DEF">
-                DEF
-              </option>
-              <option value="MID">
-                MID
-              </option>
-              <option value="FWD">
-                FWD
-              </option>
+              <option value="">Any</option>
+              <option value="GK">GK</option>
+              <option value="DEF">DEF</option>
+              <option value="MID">MID</option>
+              <option value="FWD">FWD</option>
             </select>
           </div>
 
@@ -529,14 +535,15 @@ export default function AdminChallengesPage() {
               }
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
             >
-              <option value="coins">
-                coins
+              <option value="coins">coins</option>
+              <option value="pack">pack</option>
+              <option value="special">
+                special
               </option>
-              {/* Later you can add "pack" etc */}
             </select>
             <p className="text-[10px] text-slate-500">
-              Currently only "coins" is supported by
-              the submit API.
+              For packs/special, make sure your submit
+              API handles the rewardValue.
             </p>
           </div>
 
@@ -550,12 +557,27 @@ export default function AdminChallengesPage() {
                 setRewardValue(e.target.value)
               }
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
-              placeholder="500"
+              placeholder="500 or 'gold' etc."
             />
-            <p className="text-[10px] text-slate-500">
-              For coins, this should be a number
-              (e.g. 750).
-            </p>
+          </div>
+
+          <div className="space-y-1 flex items-center gap-2 sm:col-span-2">
+            <input
+              id="isRepeatable"
+              type="checkbox"
+              checked={isRepeatable}
+              onChange={(e) =>
+                setIsRepeatable(e.target.checked)
+              }
+              className="h-3 w-3 rounded border-slate-600 bg-slate-950"
+            />
+            <label
+              htmlFor="isRepeatable"
+              className="text-[11px] text-slate-300"
+            >
+              Repeatable (users can complete this
+              challenge multiple times)
+            </label>
           </div>
 
           <div className="space-y-1 flex items-center gap-2 sm:col-span-2">
@@ -572,8 +594,7 @@ export default function AdminChallengesPage() {
               htmlFor="isActive"
               className="text-[11px] text-slate-300"
             >
-              Active (visible on public SBC
-              page)
+              Active (visible on public SBC page)
             </label>
           </div>
 

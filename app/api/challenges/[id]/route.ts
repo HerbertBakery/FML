@@ -21,15 +21,20 @@ export async function GET(
   const { id } = params;
 
   try {
-    const t = await prisma.squadChallengeTemplate.findUnique({
-      where: { id },
-      include: {
-        submissions: {
-          where: { userId: user.id },
-          select: { id: true, completedAt: true, createdAt: true }
-        }
-      }
-    });
+    const t =
+      await prisma.squadChallengeTemplate.findUnique({
+        where: { id },
+        include: {
+          submissions: {
+            where: { userId: user.id },
+            select: {
+              id: true,
+              completedAt: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
 
     if (!t || !t.isActive) {
       return NextResponse.json(
@@ -54,10 +59,12 @@ export async function GET(
         requiredClub: t.requiredClub,
         rewardType: t.rewardType,
         rewardValue: t.rewardValue,
+        // 🔹 NEW: repeatability flag
+        isRepeatable: t.isRepeatable,
         isActive: t.isActive,
         createdAt: t.createdAt,
-        completedCount
-      }
+        completedCount,
+      },
     });
   } catch (err) {
     console.error("Error fetching challenge:", err);

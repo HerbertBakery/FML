@@ -6,14 +6,16 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const listings = await prisma.marketListing.findMany({
-    where: { isActive: true },
+    where: {
+      isActive: true,
+    },
     include: {
       seller: true,
-      userMonster: true
+      userMonster: true,
     },
     orderBy: {
-      createdAt: "desc"
-    }
+      createdAt: "desc",
+    },
   });
 
   const result = listings.map((l) => ({
@@ -32,8 +34,8 @@ export async function GET(req: NextRequest) {
       baseAttack: l.userMonster.baseAttack,
       baseMagic: l.userMonster.baseMagic,
       baseDefense: l.userMonster.baseDefense,
-      evolutionLevel: l.userMonster.evolutionLevel
-    }
+      evolutionLevel: l.userMonster.evolutionLevel,
+    },
   }));
 
   return NextResponse.json({ listings: result });

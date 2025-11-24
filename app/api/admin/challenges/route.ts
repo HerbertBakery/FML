@@ -20,9 +20,10 @@ export async function GET(req: NextRequest) {
   try {
     await requireUser(req);
 
-    const templates = await prisma.squadChallengeTemplate.findMany({
-      orderBy: { createdAt: "desc" },
-    });
+    const templates =
+      await prisma.squadChallengeTemplate.findMany({
+        orderBy: { createdAt: "desc" },
+      });
 
     return NextResponse.json({ challenges: templates });
   } catch (err: any) {
@@ -50,6 +51,7 @@ type CreateBody = {
   requiredClub?: string | null;
   rewardType?: string;
   rewardValue?: string;
+  isRepeatable?: boolean;
   isActive?: boolean;
 };
 
@@ -71,10 +73,15 @@ export async function POST(req: NextRequest) {
 
     const code = (body.code || "").trim();
     const name = (body.name || "").trim();
-    const description = (body.description || "").trim();
-    const rewardType = (body.rewardType || "coins").trim();
-    const rewardValue = (body.rewardValue || "").trim();
-    const minMonsters = Number.isFinite(body.minMonsters as any)
+    const description =
+      (body.description || "").trim();
+    const rewardType =
+      (body.rewardType || "coins").trim();
+    const rewardValue =
+      (body.rewardValue || "").trim();
+    const minMonsters = Number.isFinite(
+      body.minMonsters as any
+    )
       ? Number(body.minMonsters)
       : 3;
 
@@ -88,25 +95,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const template = await prisma.squadChallengeTemplate.create({
-      data: {
-        code,
-        name,
-        description,
-        minMonsters: minMonsters > 0 ? minMonsters : 1,
-        minRarity: body.minRarity || null,
-        requiredPosition: body.requiredPosition || null,
-        requiredClub: body.requiredClub || null,
-        rewardType,
-        rewardValue,
-        isActive:
-          typeof body.isActive === "boolean"
-            ? body.isActive
-            : true,
-      },
-    });
+    const template =
+      await prisma.squadChallengeTemplate.create({
+        data: {
+          code,
+          name,
+          description,
+          minMonsters: minMonsters > 0
+            ? minMonsters
+            : 1,
+          minRarity: body.minRarity || null,
+          requiredPosition:
+            body.requiredPosition || null,
+          requiredClub: body.requiredClub || null,
+          rewardType,
+          rewardValue,
+          isRepeatable:
+            typeof body.isRepeatable === "boolean"
+              ? body.isRepeatable
+              : true,
+          isActive:
+            typeof body.isActive === "boolean"
+              ? body.isActive
+              : true,
+        },
+      });
 
-    return NextResponse.json({ challenge: template });
+    return NextResponse.json({
+      challenge: template,
+    });
   } catch (err: any) {
     if (err?.message === "NOT_AUTH") {
       return NextResponse.json(
@@ -115,12 +132,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.error("Admin POST challenges error:", err);
+    console.error(
+      "Admin POST challenges error:",
+      err
+    );
 
     // Handle unique code violation
     if (err?.code === "P2002") {
       return NextResponse.json(
-        { error: "A challenge with this code already exists." },
+        {
+          error:
+            "A challenge with this code already exists.",
+        },
         { status: 400 }
       );
     }

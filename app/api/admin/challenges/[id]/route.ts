@@ -60,6 +60,7 @@ type UpdateBody = {
   requiredClub?: string | null;
   rewardType?: string;
   rewardValue?: string;
+  isRepeatable?: boolean;
   isActive?: boolean;
 };
 
@@ -124,6 +125,9 @@ export async function PUT(
     }
     if (body.rewardValue !== undefined) {
       updateData.rewardValue = body.rewardValue.trim();
+    }
+    if (body.isRepeatable !== undefined) {
+      updateData.isRepeatable = body.isRepeatable;
     }
     if (body.isActive !== undefined) {
       updateData.isActive = body.isActive;

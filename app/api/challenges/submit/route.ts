@@ -7,27 +7,12 @@ export const runtime = "nodejs";
 
 type Body = {
   challengeId?: string;
-  userMonsterIds?: string[];
+  userMonsterIds?: string[]; // monsters being submitted
 };
 
-function normalizeStr(s: string | null | undefined) {
-  return (s || "").trim().toUpperCase();
-}
-
-// Very simple rarity "ranking" for comparisons if you want to extend later
-const rarityOrder = ["COMMON", "RARE", "EPIC", "LEGENDARY"];
-
-function rarityMeets(min: string | null | undefined, actual: string) {
-  if (!min) return true; // no requirement
-  const m = rarityOrder.indexOf(normalizeStr(min));
-  const a = rarityOrder.indexOf(normalizeStr(actual));
-  if (m === -1 || a === -1) return true; // if unknown, don't block
-  return a >= m;
-}
-
-// POST /api/challenges/submit
 export async function POST(req: NextRequest) {
   const user = await getUserFromRequest(req);
+
   if (!user) {
     return NextResponse.json(
       { error: "Not authenticated" },
@@ -35,194 +20,233 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: Body = {};
+  let body: Body;
   try {
     body = await req.json();
   } catch {
-    // ignore, will validate below
+    return NextResponse.json(
+      { error: "Invalid JSON body." },
+      { status: 400 }
+    );
   }
 
-  const challengeId = body.challengeId || "";
-  const userMonsterIds = body.userMonsterIds || [];
+  const { challengeId, userMonsterIds } = body;
 
-  if (!challengeId || !Array.isArray(userMonsterIds) || userMonsterIds.length === 0) {
+  if (!challengeId || !userMonsterIds || userMonsterIds.length === 0) {
     return NextResponse.json(
-      { error: "Challenge ID and at least one monster are required." },
+      {
+        error:
+          "challengeId and at least one userMonsterId are required.",
+      },
       { status: 400 }
     );
   }
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // Load challenge
-      const challenge = await tx.squadChallengeTemplate.findUnique({
-        where: { id: challengeId }
-      });
+      const challenge =
+        await tx.squadChallengeTemplate.findUnique({
+          where: { id: challengeId },
+        });
 
       if (!challenge || !challenge.isActive) {
-        throw new Error("Challenge not found or inactive.");
+        throw new Error("Challenge not available.");
       }
 
-      // Load monsters that belong to this user
+      // If NOT repeatable, ensure the user has not already completed it.
+      if (!challenge.isRepeatable) {
+        const alreadyCompleted =
+          await tx.squadChallengeSubmission.findFirst({
+            where: {
+              challengeId: challenge.id,
+              userId: user.id,
+              completedAt: {
+                not: null,
+              },
+            },
+          });
+
+        if (alreadyCompleted) {
+          throw new Error(
+            "You have already completed this challenge. It is not repeatable."
+          );
+        }
+      }
+
+      // Load monsters & validate ownership + not consumed
       const monsters = await tx.userMonster.findMany({
         where: {
           id: { in: userMonsterIds },
           userId: user.id,
-          isConsumed: false
-        }
+          isConsumed: false,
+        },
       });
 
       if (monsters.length !== userMonsterIds.length) {
         throw new Error(
-          "Some selected monsters do not exist, are not yours, or are already consumed."
+          "One or more selected monsters are invalid or not owned by you."
         );
       }
 
-      // Basic constraint: minMonsters
       if (monsters.length < challenge.minMonsters) {
         throw new Error(
-          `You must submit at least ${challenge.minMonsters} monsters for this challenge.`
+          `This challenge requires at least ${challenge.minMonsters} monsters.`
         );
       }
 
-      // Constraint: requiredPosition (at least one monster with this position)
+      // Very simple checks for requiredPosition, club, rarity, etc.
       if (challenge.requiredPosition) {
-        const requiredPos = normalizeStr(challenge.requiredPosition);
-        const hasRequiredPos = monsters.some(
-          (m) => normalizeStr(m.position) === requiredPos
+        const ok = monsters.every(
+          (m) => m.position === challenge.requiredPosition
         );
-        if (!hasRequiredPos) {
+        if (!ok) {
           throw new Error(
-            `You must include at least one ${challenge.requiredPosition} in this challenge.`
+            `All submitted monsters must be position ${challenge.requiredPosition}.`
           );
         }
       }
 
-      // Constraint: requiredClub (at least one from this club code/short name)
       if (challenge.requiredClub) {
-        const requiredClub = normalizeStr(challenge.requiredClub);
-        const hasRequiredClub = monsters.some(
-          (m) => normalizeStr(m.club) === requiredClub
+        const ok = monsters.every(
+          (m) => m.club === challenge.requiredClub
         );
-        if (!hasRequiredClub) {
+        if (!ok) {
           throw new Error(
-            `You must include at least one monster from club ${challenge.requiredClub}.`
+            `All submitted monsters must be from club ${challenge.requiredClub}.`
           );
         }
       }
 
-      // Constraint: minRarity (all monsters must be >= min)
       if (challenge.minRarity) {
-        const bad = monsters.filter(
-          (m) => !rarityMeets(challenge.minRarity, m.rarity)
-        );
-        if (bad.length > 0) {
-          throw new Error(
-            `All submitted monsters must be at least ${challenge.minRarity} rarity.`
-          );
-        }
-      }
-
-      // Handle reward: coins only for now
-      let coinsGranted = 0;
-      let coinsAfter = undefined as number | undefined;
-
-      if (challenge.rewardType === "coins") {
-        const val = parseInt(challenge.rewardValue, 10);
-        coinsGranted = isNaN(val) ? 0 : Math.max(0, val);
-
-        if (coinsGranted > 0) {
-          const updatedUser = await tx.user.update({
-            where: { id: user.id },
-            data: {
-              coins: {
-                increment: coinsGranted
-              }
-            }
+        const minReq = challenge.minRarity.toLowerCase();
+        const rarOrder = ["common", "rare", "epic", "legendary"];
+        const minIndex = rarOrder.indexOf(minReq);
+        if (minIndex >= 0) {
+          const ok = monsters.every((m) => {
+            const idx = rarOrder.indexOf(
+              (m.rarity || "").toLowerCase()
+            );
+            return idx >= minIndex;
           });
-          coinsAfter = updatedUser.coins;
-        } else {
-          coinsAfter = (
-            await tx.user.findUnique({ where: { id: user.id } })
-          )?.coins ?? 0;
-        }
-      } else {
-        throw new Error(
-          "This challenge has an unsupported reward type. (Coins only for now.)"
-        );
-      }
-
-      // Create submission + link monsters
-      const submission = await tx.squadChallengeSubmission.create({
-        data: {
-          userId: user.id,
-          challengeId: challenge.id,
-          completedAt: new Date(),
-          rewardGranted: true,
-          monsters: {
-            create: monsters.map((m) => ({
-              userMonsterId: m.id
-            }))
+          if (!ok) {
+            throw new Error(
+              `All submitted monsters must be at least ${challenge.minRarity} rarity.`
+            );
           }
         }
+      }
+
+      // Create submission
+      const submission =
+        await tx.squadChallengeSubmission.create({
+          data: {
+            userId: user.id,
+            challengeId: challenge.id,
+            completedAt: new Date(),
+            rewardGranted: false,
+          },
+        });
+
+      // Link monsters to submission
+      await tx.squadChallengeSubmissionMonster.createMany({
+        data: monsters.map((m) => ({
+          submissionId: submission.id,
+          userMonsterId: m.id,
+        })),
       });
 
-      // Remove these monsters from any saved squads
+      const monsterIds = monsters.map((m) => m.id);
+
+      // "Consume" monsters:
+
+      // 1) Flag as consumed (but do NOT delete, to avoid FK issues)
+      await tx.userMonster.updateMany({
+        where: { id: { in: monsterIds } },
+        data: { isConsumed: true },
+      });
+
+      // 2) Remove from any squads
       await tx.squadMonster.deleteMany({
         where: {
-          userMonsterId: { in: userMonsterIds }
-        }
+          userMonsterId: { in: monsterIds },
+        },
       });
 
-      // (Optional but sensible) remove from any gameweek entries too
+      // 3) Remove from any locked gameweek entries
       await tx.gameweekEntryMonster.deleteMany({
         where: {
-          userMonsterId: { in: userMonsterIds }
-        }
+          userMonsterId: { in: monsterIds },
+        },
       });
 
-      // Mark monsters as consumed, so they vanish from the collection / squad builder
-      await tx.userMonster.updateMany({
+      // 4) Deactivate any marketplace listings for these monsters
+      await tx.marketListing.updateMany({
         where: {
-          id: { in: userMonsterIds },
-          userId: user.id
+          userMonsterId: { in: monsterIds },
+          isActive: true,
         },
         data: {
-          isConsumed: true
-        }
+          isActive: false,
+        },
       });
 
-      // Log history for each consumed monster
-      await Promise.all(
-        monsters.map((m) =>
-          tx.monsterHistoryEvent.create({
+      // Grant reward
+      let rewardDescription = "";
+      if (challenge.rewardType === "coins") {
+        const coins =
+          parseInt(challenge.rewardValue, 10) || 0;
+        if (coins > 0) {
+          await tx.user.update({
+            where: { id: user.id },
             data: {
-              userMonsterId: m.id,
-              actorUserId: user.id,
-              action: "CONSUMED_SBC",
-              description: `Consumed in SBC: ${challenge.name} (${challenge.code})`
-            }
-          })
-        )
-      );
+              coins: { increment: coins },
+            },
+          });
+          rewardDescription = `${coins} coins`;
+        }
+      } else if (challenge.rewardType === "pack") {
+        const packType = challenge.rewardValue || "starter";
+        await tx.packOpen.create({
+          data: {
+            userId: user.id,
+            packType,
+          },
+        });
+        rewardDescription = `${packType} pack`;
+      } else {
+        rewardDescription = challenge.rewardValue;
+      }
+
+      // Mark reward as granted
+      await tx.squadChallengeSubmission.update({
+        where: { id: submission.id },
+        data: {
+          rewardGranted: true,
+        },
+      });
 
       return {
         submissionId: submission.id,
-        coinsGranted,
-        coinsAfter
+        consumedMonsterIds: monsterIds,
+        reward: rewardDescription,
       };
     });
 
-    return NextResponse.json({
-      ok: true,
-      submissionId: result.submissionId,
-      coinsGranted: result.coinsGranted,
-      coinsAfter: result.coinsAfter
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        ...result,
+      },
+      { status: 200 }
+    );
   } catch (err: any) {
     console.error("Error submitting challenge:", err);
     return NextResponse.json(
-      { error: err?.message || "Failed to submit challenge." },
+      {
+        error:
+          err?.message ||
+          "Failed to submit challenge.",
+      },
       { status: 400 }
     );
   }

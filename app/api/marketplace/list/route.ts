@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 type Body = {
   userMonsterId?: string;
-  monsterId?: string; // accept legacy name too
+  monsterId?: string; // what the frontend sends
   price?: number;
 };
 
@@ -31,9 +31,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Accept both userMonsterId and monsterId for safety
   const userMonsterId =
-    body.userMonsterId || body.monsterId || "";
+    body.userMonsterId || body.monsterId;
   const price = body.price ?? 0;
 
   if (!userMonsterId) {
@@ -50,10 +49,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Verify the monster belongs to this user and is not consumed
   const monster = await prisma.userMonster.findFirst({
     where: {
       id: userMonsterId,
       userId: user.id,
+      isConsumed: false,
     },
   });
 
@@ -61,12 +62,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "You do not own this monster or it does not exist.",
+          "You do not own this monster or it is unavailable.",
       },
       { status: 404 }
     );
   }
 
+  // Check if already actively listed
   const existing = await prisma.marketListing.findFirst({
     where: {
       userMonsterId,
@@ -86,6 +88,7 @@ export async function POST(req: NextRequest) {
       sellerId: user.id,
       userMonsterId,
       price,
+      // isActive defaults to true from schema
     },
   });
 
