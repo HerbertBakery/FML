@@ -3,11 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
+// IMPORTANT: do NOT cache this route – always hit the DB.
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
     const listings = await prisma.marketListing.findMany({
-      where: { isActive: true }, // ✅ ONLY active listings
+      where: { isActive: true }, // only active listings
       include: {
         seller: true,
         userMonster: true,
@@ -37,14 +39,11 @@ export async function GET(req: NextRequest) {
       },
     }));
 
-    return NextResponse.json({
-      listings: result,
-      apiVersion: "marketplace-2025-11-23-a", // small debug marker
-    });
+    return NextResponse.json({ listings: result });
   } catch (err) {
     console.error("Error loading marketplace listings:", err);
     return NextResponse.json(
-      { error: "Failed to load marketplace listings." },
+      { error: "Failed to load marketplace." },
       { status: 500 }
     );
   }
