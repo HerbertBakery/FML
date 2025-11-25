@@ -113,6 +113,24 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      // ✅ NEW: log history for both buyer and seller
+      await tx.monsterHistoryEvent.createMany({
+        data: [
+          {
+            userMonsterId: listing.userMonsterId,
+            actorUserId: buyer.id,
+            action: "BOUGHT",
+            description: `Bought from ${listing.seller.email} for ${listing.price} coins.`,
+          },
+          {
+            userMonsterId: listing.userMonsterId,
+            actorUserId: listing.sellerId,
+            action: "SOLD",
+            description: `Sold to ${buyer.email} for ${listing.price} coins.`,
+          },
+        ],
+      });
+
       return {
         listingId: listing.id,
         price: listing.price,

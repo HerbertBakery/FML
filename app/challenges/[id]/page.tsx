@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import MonsterDetailModal from "@/components/MonsterDetailModal";
 
 type Challenge = {
   id: string;
@@ -61,6 +62,10 @@ export default function ChallengeDetailPage() {
   const [error, setError] =
     useState<string | null>(null);
   const [success, setSuccess] =
+    useState<string | null>(null);
+
+  // NEW: which monster is open in the detail modal
+  const [detailMonsterId, setDetailMonsterId] =
     useState<string | null>(null);
 
   async function load() {
@@ -302,179 +307,203 @@ export default function ChallengeDetailPage() {
       : `${challenge.rewardType} (${challenge.rewardValue})`;
 
   return (
-    <main className="space-y-6">
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold mb-1">
-              {challenge.name}
-            </h1>
-            <p className="text-xs text-slate-400 mb-2">
-              {challenge.description}
-            </p>
-            <p className="text-[11px] text-amber-300">
-              Reward: {rewardText}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2 items-center text-[11px]">
-              <span
-                className={`px-2 py-0.5 rounded-full border ${
-                  challenge.isRepeatable
-                    ? "bg-sky-500/10 border-sky-400 text-sky-300"
-                    : "bg-slate-800 border-slate-500 text-slate-200"
-                }`}
-              >
-                {challenge.isRepeatable
-                  ? "Repeatable"
-                  : "One-time"}
-              </span>
-              {challenge.completedCount > 0 && (
-                <span className="px-2 py-0.5 rounded-full border border-emerald-400 bg-emerald-500/10 text-emerald-300">
-                  Completed{" "}
-                  {challenge.completedCount} time
-                  {challenge.completedCount > 1
-                    ? "s"
-                    : ""}
-                </span>
-              )}
-              {isLocked && (
-                <span className="px-2 py-0.5 rounded-full border border-slate-500 bg-slate-800 text-slate-300">
-                  Already completed – cannot be
-                  done again
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            <Link
-              href="/challenges"
-              className="text-[11px] text-slate-300 underline underline-offset-2"
-            >
-              Back to all challenges
-            </Link>
-          </div>
-        </div>
-
-        <div className="mt-3 text-[11px] text-slate-400 space-y-1">
-          <p className="font-semibold text-slate-200">
-            Requirements:
-          </p>
-          <ul className="list-disc list-inside">
-            <li>
-              At least {challenge.minMonsters} monsters
-              (selected: {selectedMonsters.length})
-            </li>
-            {challenge.requiredPosition && (
-              <li>
-                Must include at least one{" "}
-                {challenge.requiredPosition}
-              </li>
-            )}
-            {challenge.requiredClub && (
-              <li>
-                Must include at least one from club{" "}
-                {challenge.requiredClub}
-              </li>
-            )}
-            {challenge.minRarity && (
-              <li>
-                All monsters must be at least{" "}
-                {challenge.minRarity} rarity
-              </li>
-            )}
-          </ul>
-        </div>
-
-        <div className="mt-3 text-[11px] text-slate-400">
-          <p>
-            Selected monsters will be{" "}
-            <span className="text-amber-300 font-semibold">
-              permanently removed
-            </span>{" "}
-            from your collection if the challenge is
-            successfully completed.
-          </p>
-        </div>
-
-        {error && (
-          <p className="mt-2 text-xs text-red-400">
-            {error}
-          </p>
-        )}
-        {success && (
-          <p className="mt-2 text-xs text-emerald-300">
-            {success}
-          </p>
-        )}
-
-        <button
-          type="button"
-          disabled={submitting || !canSubmit}
-          onClick={handleSubmit}
-          className={`mt-4 rounded-full px-4 py-2 text-sm font-semibold ${
-            submitting || !canSubmit
-              ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-              : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
-          }`}
-        >
-          {isLocked
-            ? "Already Completed"
-            : submitting
-            ? "Submitting..."
-            : "Submit Squad & Claim Reward"}
-        </button>
-      </section>
-
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-slate-100 mb-2">
-          Your Collection
-        </h2>
-        {collection.length === 0 ? (
-          <p className="text-xs text-slate-400">
-            You don&apos;t have any monsters to submit yet.
-            Open more packs first.
-          </p>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-3">
-            {collection.map((m) => {
-              const selected =
-                selectedIds.includes(m.id);
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() =>
-                    toggleSelect(m.id)
-                  }
-                  className={`text-left rounded-xl border p-3 text-xs transition ${
-                    selected
-                      ? "border-emerald-400 bg-emerald-500/10"
-                      : "border-slate-700 bg-slate-950/60 hover:border-emerald-400"
+    <>
+      <main className="space-y-6">
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-semibold mb-1">
+                {challenge.name}
+              </h1>
+              <p className="text-xs text-slate-400 mb-2">
+                {challenge.description}
+              </p>
+              <p className="text-[11px] text-amber-300">
+                Reward: {rewardText}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2 items-center text-[11px]">
+                <span
+                  className={`px-2 py-0.5 rounded-full border ${
+                    challenge.isRepeatable
+                      ? "bg-sky-500/10 border-sky-400 text-sky-300"
+                      : "bg-slate-800 border-slate-500 text-slate-200"
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold">
-                      {m.displayName}
-                    </span>
-                    <span className="text-[10px] uppercase text-emerald-300">
-                      {m.rarity}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-300">
-                    {m.realPlayerName} • {m.club}
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    {m.position} • ATK {m.baseAttack} • MAG{" "}
-                    {m.baseMagic} • DEF {m.baseDefense}
-                  </p>
-                  <p className="text-[10px] text-emerald-300 mt-1">
-                    Evo Lv. {m.evolutionLevel}
-                  </p>
-                </button>
-              );
-            })}
+                  {challenge.isRepeatable
+                    ? "Repeatable"
+                    : "One-time"}
+                </span>
+                {challenge.completedCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full border border-emerald-400 bg-emerald-500/10 text-emerald-300">
+                    Completed{" "}
+                    {challenge.completedCount} time
+                    {challenge.completedCount > 1
+                      ? "s"
+                      : ""}
+                  </span>
+                )}
+                {isLocked && (
+                  <span className="px-2 py-0.5 rounded-full border border-slate-500 bg-slate-800 text-slate-300">
+                    Already completed – cannot be
+                    done again
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <Link
+                href="/challenges"
+                className="text-[11px] text-slate-300 underline underline-offset-2"
+              >
+                Back to all challenges
+              </Link>
+            </div>
           </div>
-        )}
-      </section>
-    </main>
+
+          <div className="mt-3 text-[11px] text-slate-400 space-y-1">
+            <p className="font-semibold text-slate-200">
+              Requirements:
+            </p>
+            <ul className="list-disc list-inside">
+              <li>
+                At least {challenge.minMonsters} monsters
+                (selected: {selectedMonsters.length})
+              </li>
+              {challenge.requiredPosition && (
+                <li>
+                  Must include at least one{" "}
+                  {challenge.requiredPosition}
+                </li>
+              )}
+              {challenge.requiredClub && (
+                <li>
+                  Must include at least one from club{" "}
+                  {challenge.requiredClub}
+                </li>
+              )}
+              {challenge.minRarity && (
+                <li>
+                  All monsters must be at least{" "}
+                  {challenge.minRarity} rarity
+                </li>
+              )}
+            </ul>
+          </div>
+
+          <div className="mt-3 text-[11px] text-slate-400">
+            <p>
+              Selected monsters will be{" "}
+              <span className="text-amber-300 font-semibold">
+                permanently removed
+              </span>{" "}
+              from your collection if the challenge is
+              successfully completed.
+            </p>
+          </div>
+
+          {error && (
+            <p className="mt-2 text-xs text-red-400">
+              {error}
+            </p>
+          )}
+          {success && (
+            <p className="mt-2 text-xs text-emerald-300">
+              {success}
+            </p>
+          )}
+
+          <button
+            type="button"
+            disabled={submitting || !canSubmit}
+            onClick={handleSubmit}
+            className={`mt-4 rounded-full px-4 py-2 text-sm font-semibold ${
+              submitting || !canSubmit
+                ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
+            }`}
+          >
+            {isLocked
+              ? "Already Completed"
+              : submitting
+              ? "Submitting..."
+              : "Submit Squad & Claim Reward"}
+          </button>
+        </section>
+
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-100 mb-2">
+            Your Collection
+          </h2>
+          {collection.length === 0 ? (
+            <p className="text-xs text-slate-400">
+              You don&apos;t have any monsters to submit yet.
+              Open more packs first.
+            </p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-3">
+              {collection.map((m) => {
+                const selected =
+                  selectedIds.includes(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() =>
+                      toggleSelect(m.id)
+                    }
+                    className={`text-left rounded-xl border p-3 text-xs transition ${
+                      selected
+                        ? "border-emerald-400 bg-emerald-500/10"
+                        : "border-slate-700 bg-slate-950/60 hover:border-emerald-400"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold">
+                        {m.displayName}
+                      </span>
+                      <span className="text-[10px] uppercase text-emerald-300">
+                        {m.rarity}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300">
+                      {m.realPlayerName} • {m.club}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {m.position} • ATK{" "}
+                      {m.baseAttack} • MAG{" "}
+                      {m.baseMagic} • DEF{" "}
+                      {m.baseDefense}
+                    </p>
+                    <p className="text-[10px] text-emerald-300 mt-1">
+                      Evo Lv. {m.evolutionLevel}
+                    </p>
+
+                    {/* NEW: view details button that opens the modal */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDetailMonsterId(m.id);
+                      }}
+                      className="mt-2 inline-flex items-center rounded-full border border-slate-600 px-2 py-1 text-[10px] text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+                    >
+                      View details
+                    </button>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </main>
+
+      {/* NEW: shared monster detail modal */}
+      {detailMonsterId && (
+        <MonsterDetailModal
+          monsterId={detailMonsterId}
+          onClose={() => setDetailMonsterId(null)}
+        />
+      )}
+    </>
   );
 }

@@ -1,4 +1,5 @@
 // components/MonsterCard.tsx
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 export type MonsterCardMonster = {
@@ -19,6 +20,11 @@ type MonsterCardProps = {
   rightBadge?: ReactNode;
   /** Extra content rendered below the stats (price, buttons, etc.) */
   children?: ReactNode;
+  /**
+   * Optional link to a monster detail/history page.
+   * If provided, a "View details" link will appear at the bottom of the card.
+   */
+  detailHref?: string;
 };
 
 function getRarityClasses(rarityRaw: string | undefined) {
@@ -62,6 +68,7 @@ export default function MonsterCard({
   monster,
   rightBadge,
   children,
+  detailHref,
 }: MonsterCardProps) {
   const { border, background, badge } = getRarityClasses(
     monster.rarity
@@ -101,6 +108,17 @@ export default function MonsterCard({
       </div>
 
       {children && <div className="mt-1">{children}</div>}
+
+      {detailHref && (
+        <div className="mt-1 flex justify-end">
+          <Link
+            href={detailHref}
+            className="text-[10px] text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+          >
+            View details
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

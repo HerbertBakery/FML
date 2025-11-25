@@ -47,52 +47,73 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const monster = await prisma.userMonster.findFirst({
-    where: {
-      id: userMonsterId,
-      userId: user.id
-    }
-  });
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const monster = await tx.userMonster.findFirst({
+        where: {
+          id: userMonsterId,
+          userId: user.id,
+          isConsumed: false,
+        },
+      });
 
-  if (!monster) {
+      if (!monster) {
+        throw new Error(
+          "You do not own this monster, it does not exist, or it has been consumed."
+        );
+      }
+
+      const existing = await tx.marketListing.findFirst({
+        where: {
+          userMonsterId,
+          isActive: true,
+        },
+      });
+
+      if (existing) {
+        throw new Error(
+          "This monster is already listed for sale."
+        );
+      }
+
+      const listing = await tx.marketListing.create({
+        data: {
+          sellerId: user.id,
+          userMonsterId,
+          price,
+          isActive: true,
+        },
+      });
+
+      // 🔹 History: LISTED
+      await tx.monsterHistoryEvent.create({
+        data: {
+          userMonsterId: monster.id,
+          actorUserId: user.id,
+          action: "LISTED",
+          description: `Listed for ${price} coins on the marketplace.`,
+        },
+      });
+
+      return listing;
+    });
+
+    return NextResponse.json(
+      {
+        id: result.id,
+        price: result.price,
+      },
+      { status: 201 }
+    );
+  } catch (err: any) {
+    console.error("Error listing monster:", err);
     return NextResponse.json(
       {
         error:
-          "You do not own this monster or it does not exist."
+          err?.message ||
+          "Failed to list monster for sale.",
       },
-      { status: 404 }
-    );
-  }
-
-  const existing = await prisma.marketListing.findFirst({
-    where: {
-      userMonsterId,
-      isActive: true
-    }
-  });
-
-  if (existing) {
-    return NextResponse.json(
-      { error: "This monster is already listed for sale." },
       { status: 400 }
     );
   }
-
-  const listing = await prisma.marketListing.create({
-    data: {
-      sellerId: user.id,
-      userMonsterId,
-      price,
-      // 👇 IMPORTANT: do not rely on DB default
-      isActive: true
-    }
-  });
-
-  return NextResponse.json(
-    {
-      id: listing.id,
-      price: listing.price
-    },
-    { status: 201 }
-  );
 }
