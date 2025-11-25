@@ -5,38 +5,51 @@ import { prisma } from "@/lib/db";
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  const listings = await prisma.marketListing.findMany({
-    where: {
-      isActive: true,
-    },
-    include: {
-      seller: true,
-      userMonster: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  try {
+    const listings = await prisma.marketListing.findMany({
+      where: {
+        // Only show listings that are still active
+        isActive: true,
+        // And whose monster is still not consumed (e.g. not burned in SBC)
+        userMonster: {
+          isConsumed: false,
+        },
+      },
+      include: {
+        seller: true,
+        userMonster: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
-  const result = listings.map((l) => ({
-    id: l.id,
-    price: l.price,
-    sellerId: l.sellerId,
-    sellerEmail: l.seller.email,
-    userMonster: {
-      id: l.userMonster.id,
-      templateCode: l.userMonster.templateCode,
-      displayName: l.userMonster.displayName,
-      realPlayerName: l.userMonster.realPlayerName,
-      position: l.userMonster.position,
-      club: l.userMonster.club,
-      rarity: l.userMonster.rarity,
-      baseAttack: l.userMonster.baseAttack,
-      baseMagic: l.userMonster.baseMagic,
-      baseDefense: l.userMonster.baseDefense,
-      evolutionLevel: l.userMonster.evolutionLevel,
-    },
-  }));
+    const result = listings.map((l) => ({
+      id: l.id,
+      price: l.price,
+      sellerId: l.sellerId,
+      sellerEmail: l.seller.email,
+      userMonster: {
+        id: l.userMonster.id,
+        templateCode: l.userMonster.templateCode,
+        displayName: l.userMonster.displayName,
+        realPlayerName: l.userMonster.realPlayerName,
+        position: l.userMonster.position,
+        club: l.userMonster.club,
+        rarity: l.userMonster.rarity,
+        baseAttack: l.userMonster.baseAttack,
+        baseMagic: l.userMonster.baseMagic,
+        baseDefense: l.userMonster.baseDefense,
+        evolutionLevel: l.userMonster.evolutionLevel,
+      },
+    }));
 
-  return NextResponse.json({ listings: result });
+    return NextResponse.json({ listings: result });
+  } catch (err) {
+    console.error("Error loading marketplace listings:", err);
+    return NextResponse.json(
+      { error: "Failed to load marketplace listings." },
+      { status: 500 }
+    );
+  }
 }
