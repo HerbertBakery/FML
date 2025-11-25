@@ -7,14 +7,7 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   try {
     const listings = await prisma.marketListing.findMany({
-      where: {
-        // Only show listings that are still active
-        isActive: true,
-        // And whose monster is still not consumed (e.g. not burned in SBC)
-        userMonster: {
-          isConsumed: false,
-        },
-      },
+      where: { isActive: true }, // ✅ ONLY active listings
       include: {
         seller: true,
         userMonster: true,
@@ -44,7 +37,10 @@ export async function GET(req: NextRequest) {
       },
     }));
 
-    return NextResponse.json({ listings: result });
+    return NextResponse.json({
+      listings: result,
+      apiVersion: "marketplace-2025-11-23-a", // small debug marker
+    });
   } catch (err) {
     console.error("Error loading marketplace listings:", err);
     return NextResponse.json(

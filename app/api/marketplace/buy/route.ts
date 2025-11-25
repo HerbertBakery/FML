@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
         throw new Error("Listing not available.");
       }
 
-      // Prevent buying your own listing
+      // ✅ Prevent buying your own listing
       if (listing.sellerId === user.id) {
         throw new Error("You cannot buy your own listing.");
       }
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Mark listing inactive so it no longer appears in /api/marketplace
+      // ✅ Deactivate the listing so it no longer shows up
       await tx.marketListing.update({
         where: { id: listing.id },
         data: {
@@ -78,22 +78,23 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // Atomic coin updates
+      // ✅ Deduct coins from buyer
       await tx.user.update({
         where: { id: buyer.id },
         data: {
-          coins: { decrement: listing.price },
+          coins: buyer.coins - listing.price,
         },
       });
 
+      // ✅ Add coins to seller
       await tx.user.update({
         where: { id: listing.sellerId },
         data: {
-          coins: { increment: listing.price },
+          coins: listing.seller.coins + listing.price,
         },
       });
 
-      // Transfer monster ownership
+      // ✅ Transfer monster ownership
       await tx.userMonster.update({
         where: { id: listing.userMonsterId },
         data: {
@@ -101,7 +102,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // Record transaction
+      // ✅ Log transaction
       await tx.marketTransaction.create({
         data: {
           listingId: listing.id,
@@ -118,13 +119,11 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    return NextResponse.json(
-      {
-        message: "Purchase successful.",
-        ...result,
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({
+      ok: true,
+      message: "Purchase successful.",
+      ...result,
+    });
   } catch (err: any) {
     console.error("Error buying listing:", err);
     return NextResponse.json(
