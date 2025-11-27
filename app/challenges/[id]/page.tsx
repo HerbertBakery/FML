@@ -38,6 +38,13 @@ type UserMonsterDTO = {
   baseMagic: number;
   baseDefense: number;
   evolutionLevel: number;
+
+  // NEW: align with collection / marketplace DTO
+  artBasePath?: string | null;
+  setCode?: string | null;
+  editionType?: string | null;
+  editionLabel?: string | null;
+  serialNumber?: number | null;
 };
 
 type CollectionResponse = {
@@ -45,28 +52,30 @@ type CollectionResponse = {
   starterPacksOpened?: number;
 };
 
+// Same art logic as marketplace / squad
+function getArtUrlForMonster(m: UserMonsterDTO): string {
+  if (m.artBasePath) return m.artBasePath;
+  if (m.templateCode) {
+    return `/cards/base/${m.templateCode}.png`;
+  }
+  return "/cards/base/test.png";
+}
+
 export default function ChallengeDetailPage() {
   const params = useParams();
   const router = useRouter();
   const challengeId = params?.id as string;
 
-  const [challenge, setChallenge] =
-    useState<Challenge | null>(null);
-  const [collection, setCollection] =
-    useState<UserMonsterDTO[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>(
-    []
-  );
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [collection, setCollection] = useState<UserMonsterDTO[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] =
-    useState<string | null>(null);
-  const [success, setSuccess] =
-    useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  // NEW: which monster is open in the detail modal
-  const [detailMonsterId, setDetailMonsterId] =
-    useState<string | null>(null);
+  // which monster is open in the detail modal
+  const [detailMonsterId, setDetailMonsterId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -75,19 +84,13 @@ export default function ChallengeDetailPage() {
 
     try {
       // Load challenge
-      const cRes = await fetch(
-        `/api/challenges/${challengeId}`,
-        {
-          credentials: "include",
-        }
-      );
-      const cJson =
-        (await cRes.json()) as ChallengeResponse;
+      const cRes = await fetch(`/api/challenges/${challengeId}`, {
+        credentials: "include",
+      });
+      const cJson = (await cRes.json()) as ChallengeResponse;
 
       if (!cRes.ok || !cJson.challenge) {
-        setError(
-          cJson.error || "Challenge not found."
-        );
+        setError(cJson.error || "Challenge not found.");
         setChallenge(null);
         setCollection([]);
         return;
@@ -96,23 +99,17 @@ export default function ChallengeDetailPage() {
       setChallenge(cJson.challenge);
 
       // Load collection
-      const colRes = await fetch(
-        "/api/me/collection",
-        {
-          credentials: "include",
-        }
-      );
+      const colRes = await fetch("/api/me/collection", {
+        credentials: "include",
+      });
       if (colRes.ok) {
-        const colJson =
-          (await colRes.json()) as CollectionResponse;
+        const colJson = (await colRes.json()) as CollectionResponse;
         setCollection(colJson.monsters || []);
       } else {
         setCollection([]);
       }
     } catch {
-      setError(
-        "Failed to load challenge or collection."
-      );
+      setError("Failed to load challenge or collection.");
       setChallenge(null);
       setCollection([]);
     } finally {
@@ -129,17 +126,12 @@ export default function ChallengeDetailPage() {
     setError(null);
     setSuccess(null);
     setSelectedIds((prev) =>
-      prev.includes(id)
-        ? prev.filter((x) => x !== id)
-        : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   }
 
   const selectedMonsters = useMemo(
-    () =>
-      collection.filter((m) =>
-        selectedIds.includes(m.id)
-      ),
+    () => collection.filter((m) => selectedIds.includes(m.id)),
     [collection, selectedIds]
   );
 
@@ -149,8 +141,7 @@ export default function ChallengeDetailPage() {
     if (count < challenge.minMonsters) return false;
 
     if (challenge.requiredPosition) {
-      const requiredPos =
-        challenge.requiredPosition.toUpperCase();
+      const requiredPos = challenge.requiredPosition.toUpperCase();
       const hasPos = selectedMonsters.some(
         (m) => m.position.toUpperCase() === requiredPos
       );
@@ -158,8 +149,7 @@ export default function ChallengeDetailPage() {
     }
 
     if (challenge.requiredClub) {
-      const requiredClub =
-        challenge.requiredClub.toUpperCase();
+      const requiredClub = challenge.requiredClub.toUpperCase();
       const hasClub = selectedMonsters.some(
         (m) => m.club.toUpperCase() === requiredClub
       );
@@ -168,18 +158,11 @@ export default function ChallengeDetailPage() {
 
     if (challenge.minRarity) {
       const min = challenge.minRarity.toUpperCase();
-      const order = [
-        "COMMON",
-        "RARE",
-        "EPIC",
-        "LEGENDARY",
-      ];
+      const order = ["COMMON", "RARE", "EPIC", "LEGENDARY"];
       const minIdx = order.indexOf(min);
       if (minIdx !== -1) {
         for (const m of selectedMonsters) {
-          const idx = order.indexOf(
-            m.rarity.toUpperCase()
-          );
+          const idx = order.indexOf(m.rarity.toUpperCase());
           if (idx !== -1 && idx < minIdx) {
             return false;
           }
@@ -191,11 +174,9 @@ export default function ChallengeDetailPage() {
   }, [challenge, selectedMonsters]);
 
   const isOneTime = !!challenge && !challenge.isRepeatable;
-  const isCompletedOnce =
-    !!challenge && challenge.completedCount > 0;
+  const isCompletedOnce = !!challenge && challenge.completedCount > 0;
   const isLocked = isOneTime && isCompletedOnce;
-  const canSubmit =
-    !!challenge && meetsRequirements && !isLocked;
+  const canSubmit = !!challenge && meetsRequirements && !isLocked;
 
   async function handleSubmit() {
     if (!challenge) return;
@@ -204,46 +185,35 @@ export default function ChallengeDetailPage() {
 
     if (!canSubmit) {
       if (isLocked) {
-        setError(
-          "You have already completed this one-time challenge."
-        );
+        setError("You have already completed this one-time challenge.");
       } else {
-        setError(
-          "Your selected monsters do not meet the challenge requirements."
-        );
+        setError("Your selected monsters do not meet the challenge requirements.");
       }
       return;
     }
 
     setSubmitting(true);
     try {
-      const res = await fetch(
-        "/api/challenges/submit",
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            challengeId: challenge.id,
-            userMonsterIds: selectedIds,
-          }),
-        }
-      );
+      const res = await fetch("/api/challenges/submit", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          challengeId: challenge.id,
+          userMonsterIds: selectedIds,
+        }),
+      });
 
       const json = await res.json();
 
       if (!res.ok || !json?.ok) {
-        setError(
-          json?.error ||
-            "Failed to submit challenge."
-        );
+        setError(json?.error || "Failed to submit challenge.");
         return;
       }
 
-      const coinsGranted =
-        json.coinsGranted ?? 0;
+      const coinsGranted = json.coinsGranted ?? 0;
       setSuccess(
         coinsGranted > 0
           ? `Challenge completed! You earned ${coinsGranted} coins.`
@@ -251,19 +221,13 @@ export default function ChallengeDetailPage() {
       );
 
       // Remove burned monsters from local collection
-      setCollection((prev) =>
-        prev.filter(
-          (m) => !selectedIds.includes(m.id)
-        )
-      );
+      setCollection((prev) => prev.filter((m) => !selectedIds.includes(m.id)));
       setSelectedIds([]);
 
       // Optionally refresh challenge (to bump completedCount)
       // await load();
     } catch (err) {
-      setError(
-        "Something went wrong submitting the challenge."
-      );
+      setError("Something went wrong submitting the challenge.");
     } finally {
       setSubmitting(false);
     }
@@ -273,9 +237,7 @@ export default function ChallengeDetailPage() {
     return (
       <main className="space-y-6">
         <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
-          <p className="text-sm text-slate-300">
-            Loading challenge...
-          </p>
+          <p className="text-sm text-slate-300">Loading challenge...</p>
         </section>
       </main>
     );
@@ -285,13 +247,8 @@ export default function ChallengeDetailPage() {
     return (
       <main className="space-y-6">
         <section className="rounded-2xl border border-red-500/40 bg-red-900/30 p-5">
-          <p className="text-sm text-red-100 mb-3">
-            {error}
-          </p>
-          <Link
-            href="/challenges"
-            className="text-xs text-emerald-300 underline"
-          >
+          <p className="text-sm text-red-100 mb-3">{error}</p>
+          <Link href="/challenges" className="text-xs text-emerald-300 underline">
             Back to challenges
           </Link>
         </section>
@@ -312,15 +269,9 @@ export default function ChallengeDetailPage() {
         <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold mb-1">
-                {challenge.name}
-              </h1>
-              <p className="text-xs text-slate-400 mb-2">
-                {challenge.description}
-              </p>
-              <p className="text-[11px] text-amber-300">
-                Reward: {rewardText}
-              </p>
+              <h1 className="text-xl font-semibold mb-1">{challenge.name}</h1>
+              <p className="text-xs text-slate-400 mb-2">{challenge.description}</p>
+              <p className="text-[11px] text-amber-300">Reward: {rewardText}</p>
               <div className="mt-2 flex flex-wrap gap-2 items-center text-[11px]">
                 <span
                   className={`px-2 py-0.5 rounded-full border ${
@@ -329,23 +280,17 @@ export default function ChallengeDetailPage() {
                       : "bg-slate-800 border-slate-500 text-slate-200"
                   }`}
                 >
-                  {challenge.isRepeatable
-                    ? "Repeatable"
-                    : "One-time"}
+                  {challenge.isRepeatable ? "Repeatable" : "One-time"}
                 </span>
                 {challenge.completedCount > 0 && (
                   <span className="px-2 py-0.5 rounded-full border border-emerald-400 bg-emerald-500/10 text-emerald-300">
-                    Completed{" "}
-                    {challenge.completedCount} time
-                    {challenge.completedCount > 1
-                      ? "s"
-                      : ""}
+                    Completed {challenge.completedCount} time
+                    {challenge.completedCount > 1 ? "s" : ""}
                   </span>
                 )}
                 {isLocked && (
                   <span className="px-2 py-0.5 rounded-full border border-slate-500 bg-slate-800 text-slate-300">
-                    Already completed – cannot be
-                    done again
+                    Already completed – cannot be done again
                   </span>
                 )}
               </div>
@@ -361,31 +306,20 @@ export default function ChallengeDetailPage() {
           </div>
 
           <div className="mt-3 text-[11px] text-slate-400 space-y-1">
-            <p className="font-semibold text-slate-200">
-              Requirements:
-            </p>
+            <p className="font-semibold text-slate-200">Requirements:</p>
             <ul className="list-disc list-inside">
               <li>
-                At least {challenge.minMonsters} monsters
-                (selected: {selectedMonsters.length})
+                At least {challenge.minMonsters} monsters (selected:{" "}
+                {selectedMonsters.length})
               </li>
               {challenge.requiredPosition && (
-                <li>
-                  Must include at least one{" "}
-                  {challenge.requiredPosition}
-                </li>
+                <li>Must include at least one {challenge.requiredPosition}</li>
               )}
               {challenge.requiredClub && (
-                <li>
-                  Must include at least one from club{" "}
-                  {challenge.requiredClub}
-                </li>
+                <li>Must include at least one from club {challenge.requiredClub}</li>
               )}
               {challenge.minRarity && (
-                <li>
-                  All monsters must be at least{" "}
-                  {challenge.minRarity} rarity
-                </li>
+                <li>All monsters must be at least {challenge.minRarity} rarity</li>
               )}
             </ul>
           </div>
@@ -393,11 +327,8 @@ export default function ChallengeDetailPage() {
           <div className="mt-3 text-[11px] text-slate-400">
             <p>
               Selected monsters will be{" "}
-              <span className="text-amber-300 font-semibold">
-                permanently removed
-              </span>{" "}
-              from your collection if the challenge is
-              successfully completed.
+              <span className="text-amber-300 font-semibold">permanently removed</span>{" "}
+              from your collection if the challenge is successfully completed.
             </p>
           </div>
 
@@ -436,27 +367,34 @@ export default function ChallengeDetailPage() {
           </h2>
           {collection.length === 0 ? (
             <p className="text-xs text-slate-400">
-              You don&apos;t have any monsters to submit yet.
-              Open more packs first.
+              You don&apos;t have any monsters to submit yet. Open more packs first.
             </p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-3">
               {collection.map((m) => {
-                const selected =
-                  selectedIds.includes(m.id);
+                const selected = selectedIds.includes(m.id);
+                const artUrl = getArtUrlForMonster(m);
+
                 return (
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() =>
-                      toggleSelect(m.id)
-                    }
+                    onClick={() => toggleSelect(m.id)}
                     className={`text-left rounded-xl border p-3 text-xs transition ${
                       selected
                         ? "border-emerald-400 bg-emerald-500/10"
                         : "border-slate-700 bg-slate-950/60 hover:border-emerald-400"
                     }`}
                   >
+                    {/* Card image (same art logic as marketplace/squad) */}
+                    <div className="mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4]">
+                      <img
+                        src={artUrl}
+                        alt={m.displayName}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-semibold">
                         {m.displayName}
@@ -469,16 +407,14 @@ export default function ChallengeDetailPage() {
                       {m.realPlayerName} • {m.club}
                     </p>
                     <p className="text-[11px] text-slate-400 mt-1">
-                      {m.position} • ATK{" "}
-                      {m.baseAttack} • MAG{" "}
-                      {m.baseMagic} • DEF{" "}
+                      {m.position} • ATK {m.baseAttack} • MAG {m.baseMagic} • DEF{" "}
                       {m.baseDefense}
                     </p>
                     <p className="text-[10px] text-emerald-300 mt-1">
                       Evo Lv. {m.evolutionLevel}
                     </p>
 
-                    {/* NEW: view details button that opens the modal */}
+                    {/* View details button that opens the modal */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -497,7 +433,7 @@ export default function ChallengeDetailPage() {
         </section>
       </main>
 
-      {/* NEW: shared monster detail modal */}
+      {/* shared monster detail modal */}
       {detailMonsterId && (
         <MonsterDetailModal
           monsterId={detailMonsterId}

@@ -10,6 +10,18 @@ import monstersData from "@/data/monsters-2025-26.json";
 export type Position = "GK" | "DEF" | "MID" | "FWD";
 export type Rarity = "COMMON" | "RARE" | "EPIC" | "LEGENDARY";
 
+// Editions for display / theming. Mirrors the Prisma enum but is optional per template.
+export type EditionType = "BASE" | "THEMED" | "LIMITED";
+
+// Simple trait bucket so we can describe archetypes for art generation
+export type MonsterTraits = {
+  bodyType?: string;       // "tall", "stocky", etc.
+  element?: string;        // "fire", "ice", "shadow", "lightning", etc.
+  hairStyle?: string;      // "afro", "short", "buzz", etc.
+  primaryColor?: string;   // hex or token
+  secondaryColor?: string; // hex or token
+};
+
 export type MonsterTemplate = {
   code: string; // stable code per player (from FPL)
   displayName: string; // monster name
@@ -21,6 +33,18 @@ export type MonsterTemplate = {
   baseAttack: number;
   baseMagic: number;
   baseDefense: number;
+
+  // Theming / set information (optional, BASE if omitted)
+  setCode?: string;           // e.g. "BASE", "CHRISTMAS_TERRORS_2025"
+  editionType?: EditionType;  // BASE | THEMED | LIMITED
+  maxEditionSize?: number;    // e.g. 100 for 1/100; undefined for unlimited
+
+  // Art paths (relative to /public or absolute URLs)
+  baseArtPath?: string;       // e.g. "/cards/base/ARS_1234.png"
+  hoverArtPath?: string;      // e.g. "/cards/base/ARS_1234_hover.webm"
+
+  // Archetype traits for prompts / UI (not required)
+  traits?: MonsterTraits;
 };
 
 // Types for the raw JSON structure (teams -> players)
@@ -142,7 +166,14 @@ const templates: MonsterTemplate[] = rawTeams.flatMap((team) =>
       rarity,
       baseAttack: stats.attack,
       baseMagic: stats.magic,
-      baseDefense: stats.defense
+      baseDefense: stats.defense,
+
+      // By default, everything is a "BASE" set until we explicitly
+      // mark themed / limited templates in a separate config step.
+      setCode: "BASE",
+      editionType: "BASE"
+      // baseArtPath / hoverArtPath / traits can be filled later
+      // for specific templates (e.g. Christmas Terrors).
     };
   })
 );

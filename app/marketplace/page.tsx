@@ -24,6 +24,13 @@ type UserMonsterDTO = {
   baseMagic: number;
   baseDefense: number;
   evolutionLevel: number;
+
+  // Optional fields if/when you start sending them from the API
+  artBasePath?: string | null;
+  setCode?: string | null;
+  editionType?: string | null;
+  editionLabel?: string | null;
+  serialNumber?: number | null;
 };
 
 type CollectionResponse = {
@@ -42,6 +49,20 @@ type MarketResponse = {
   listings: MarketListingDTO[];
 };
 
+// Helper to decide which art URL to use for a monster
+function getArtUrlForMonster(m: UserMonsterDTO): string {
+  // If backend already provides a path, use it
+  if (m.artBasePath) return m.artBasePath;
+
+  // Otherwise derive from templateCode
+  if (m.templateCode) {
+    return `/cards/base/${m.templateCode}.png`;
+  }
+
+  // Fallback if nothing else available
+  return "/cards/base/test.png";
+}
+
 export default function MarketplacePage() {
   const [user, setUser] = useState<User | null>(null);
   const [checkingUser, setCheckingUser] = useState(true);
@@ -57,7 +78,7 @@ export default function MarketplacePage() {
   const [actionMessage, setActionMessage] =
     useState<string | null>(null);
 
-  // NEW: which monster to show in the modal
+  // which monster to show in the modal
   const [detailMonsterId, setDetailMonsterId] =
     useState<string | null>(null);
 
@@ -333,11 +354,23 @@ export default function MarketplacePage() {
               const isMine =
                 listing.sellerId === user.id;
               const m = listing.userMonster;
+              const artUrl = getArtUrlForMonster(m);
 
               return (
                 <MonsterCard
                   key={listing.id}
-                  monster={m}
+                  monster={{
+                    displayName: m.displayName,
+                    realPlayerName: m.realPlayerName,
+                    position: m.position,
+                    club: m.club,
+                    rarity: m.rarity,
+                    baseAttack: m.baseAttack,
+                    baseMagic: m.baseMagic,
+                    baseDefense: m.baseDefense,
+                    evolutionLevel: m.evolutionLevel,
+                    artUrl,
+                  }}
                   rightBadge={
                     <span className="uppercase text-[10px] text-emerald-300">
                       {m.rarity}
@@ -406,33 +439,48 @@ export default function MarketplacePage() {
           </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-3">
-            {collection.map((m) => (
-              <MonsterCard
-                key={m.id}
-                monster={m}
-              >
-                <div className="mt-2 flex flex-col gap-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDetailMonsterId(m.id)
-                    }
-                    className="w-full rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
-                  >
-                    View details
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleListForSale(m.id)
-                    }
-                    className="w-full rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
-                  >
-                    List for Sale
-                  </button>
-                </div>
-              </MonsterCard>
-            ))}
+            {collection.map((m) => {
+              const artUrl = getArtUrlForMonster(m);
+
+              return (
+                <MonsterCard
+                  key={m.id}
+                  monster={{
+                    displayName: m.displayName,
+                    realPlayerName: m.realPlayerName,
+                    position: m.position,
+                    club: m.club,
+                    rarity: m.rarity,
+                    baseAttack: m.baseAttack,
+                    baseMagic: m.baseMagic,
+                    baseDefense: m.baseDefense,
+                    evolutionLevel: m.evolutionLevel,
+                    artUrl,
+                  }}
+                >
+                  <div className="mt-2 flex flex-col gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDetailMonsterId(m.id)
+                      }
+                      className="w-full rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
+                    >
+                      View details
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleListForSale(m.id)
+                      }
+                      className="w-full rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
+                    >
+                      List for Sale
+                    </button>
+                  </div>
+                </MonsterCard>
+              );
+            })}
           </div>
         )}
       </section>

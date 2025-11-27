@@ -26,6 +26,9 @@ export type OpenedMonster = {
   baseMagic: number;
   baseDefense: number;
   evolutionLevel: number;
+
+  // NEW: allow art from backend, same as marketplace DTO
+  artBasePath?: string | null;
 };
 
 type PackOpenResponse = {
@@ -39,16 +42,28 @@ type PackOpenResponse = {
 type Props = {
   packId: PackId;
   onClose?: () => void;
-  onOpened?: (
-    monsters: OpenedMonster[],
-    coinsAfter?: number
-  ) => void;
+  onOpened?: (monsters: OpenedMonster[], coinsAfter?: number) => void;
   /**
    * If true (default): clicking "Add to squad" will navigate to /squad.
    * If false: it will just close the modal, leaving the user on the current page.
    */
   redirectToSquad?: boolean;
 };
+
+// -------------------- Shared art helper (same logic as marketplace) --------------------
+
+function getArtUrlForMonster(m: Pick<OpenedMonster, "templateCode" | "artBasePath">): string {
+  // If backend already provides a path, use it
+  if (m.artBasePath) return m.artBasePath;
+
+  // Otherwise derive from templateCode
+  if (m.templateCode) {
+    return `/cards/base/${m.templateCode}.png`;
+  }
+
+  // Fallback if nothing else available
+  return "/cards/base/test.png";
+}
 
 // -------------------- Theme helpers --------------------
 type Theme = {
@@ -116,17 +131,9 @@ const THEMES: Record<PackId, Theme> = {
 };
 
 // -------------------- Card Visual --------------------
-type RarityKey =
-  | "COMMON"
-  | "RARE"
-  | "EPIC"
-  | "LEGENDARY"
-  | "DEFAULT";
+type RarityKey = "COMMON" | "RARE" | "EPIC" | "LEGENDARY" | "DEFAULT";
 
-const rarityStyle: Record<
-  RarityKey,
-  { ring: string; glow: string; label: string }
-> = {
+const rarityStyle: Record<RarityKey, { ring: string; glow: string; label: string }> = {
   COMMON: {
     ring: "ring-zinc-400",
     glow: "shadow-zinc-400/30",
@@ -157,22 +164,19 @@ const rarityStyle: Record<
 function rarityKey(r: string | undefined | null): RarityKey {
   if (!r) return "DEFAULT";
   const upper = r.toUpperCase();
-  if (
-    upper === "COMMON" ||
-    upper === "RARE" ||
-    upper === "EPIC" ||
-    upper === "LEGENDARY"
-  ) {
+  if (upper === "COMMON" || upper === "RARE" || upper === "EPIC" || upper === "LEGENDARY") {
     return upper;
   }
   return "DEFAULT";
 }
 
-const MonsterRevealCard: React.FC<{
-  monster: OpenedMonster;
-  delay?: number;
-}> = ({ monster, delay = 0 }) => {
+const MonsterRevealCard: React.FC<{ monster: OpenedMonster; delay?: number }> = ({
+  monster,
+  delay = 0,
+}) => {
   const style = rarityStyle[rarityKey(monster.rarity)];
+  const artUrl = getArtUrlForMonster(monster);
+
   return (
     <motion.div
       initial={{ rotateY: 180, opacity: 0, scale: 0.8 }}
@@ -193,28 +197,29 @@ const MonsterRevealCard: React.FC<{
       <div className="absolute top-3 left-3 text-[10px] tracking-wide uppercase bg-black/40 text-white px-2 py-0.5 rounded">
         {monster.position} • {monster.club}
       </div>
+
+      {/* IMAGE AREA – use same art URL logic as marketplace */}
+      <div className="mt-6 mb-3 relative w-full h-32 overflow-hidden rounded-lg">
+        <img src={artUrl} alt={monster.displayName} className="w-full h-full object-cover" />
+      </div>
+
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
           <div
             className="text-lg font-semibold tracking-wide text-emerald-200 drop-shadow"
             style={{
-              textShadow:
-                "0 1px 8px rgba(16,185,129,0.35)",
+              textShadow: "0 1px 8px rgba(16,185,129,0.35)",
             }}
           >
             {monster.displayName}
           </div>
-          <div className="mt-1 text-xs text-slate-300">
-            {monster.realPlayerName}
-          </div>
+          <div className="mt-1 text-xs text-slate-300">{monster.realPlayerName}</div>
           <div className="mt-3 flex justify-center gap-2 text-[11px] text-slate-200">
             <span>ATK {monster.baseAttack}</span>
             <span>MAG {monster.baseMagic}</span>
             <span>DEF {monster.baseDefense}</span>
           </div>
-          <div className="mt-2 text-[10px] text-emerald-300">
-            Evo Lv. {monster.evolutionLevel}
-          </div>
+          <div className="mt-2 text-[10px] text-emerald-300">Evo Lv. {monster.evolutionLevel}</div>
         </div>
       </div>
       <div className="absolute bottom-0 left-0 right-0 h-16 rounded-b-2xl bg-gradient-to-t from-white/10 to-transparent" />
@@ -233,9 +238,7 @@ const PackVisual: React.FC<{
       disabled={disabled}
       onClick={onOpen}
       className={`relative w-60 h-80 select-none rounded-3xl ${theme.frame} shadow-2xl overflow-hidden ${
-        disabled
-          ? "opacity-60 cursor-not-allowed"
-          : "cursor-pointer"
+        disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
       }`}
       initial={{ scale: 0.95, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
@@ -265,9 +268,7 @@ const PackVisual: React.FC<{
       {/* Branding */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="text-center px-4">
-          <h2
-            className={`text-2xl font-extrabold drop-shadow-lg ${theme.brandText}`}
-          >
+          <h2 className={`text-2xl font-extrabold drop-shadow-lg ${theme.brandText}`}>
             FANTASY MONSTER
           </h2>
           <p
@@ -291,13 +292,7 @@ const PackVisual: React.FC<{
 };
 
 // -------------------- Main Flow --------------------
-type Phase =
-  | "idle"
-  | "buying"
-  | "ready"
-  | "opening"
-  | "revealed"
-  | "error";
+type Phase = "idle" | "buying" | "ready" | "opening" | "revealed" | "error";
 
 const PackOpenModal: React.FC<Props> = ({
   packId,
@@ -307,9 +302,7 @@ const PackOpenModal: React.FC<Props> = ({
 }) => {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
-  const [monsters, setMonsters] = useState<
-    OpenedMonster[] | null
-  >(null);
+  const [monsters, setMonsters] = useState<OpenedMonster[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const theme = THEMES[packId];
@@ -328,16 +321,10 @@ const PackOpenModal: React.FC<Props> = ({
         },
         body: JSON.stringify({ packId }),
       });
-      const j =
-        (await r.json().catch(() => null)) as
-          | PackOpenResponse
-          | null;
+      const j = (await r.json().catch(() => null)) as PackOpenResponse | null;
 
       if (!r.ok || !j || j.error) {
-        throw new Error(
-          j?.error ||
-            `Failed to open pack (HTTP ${r.status})`
-        );
+        throw new Error(j?.error || `Failed to open pack (HTTP ${r.status})`);
       }
 
       const pulled = j.monsters ?? [];
@@ -345,10 +332,7 @@ const PackOpenModal: React.FC<Props> = ({
       onOpened?.(pulled, j.coinsAfter);
       setPhase("ready");
     } catch (e: any) {
-      setErr(
-        e?.message ||
-          "Failed to open pack. Please try again."
-      );
+      setErr(e?.message || "Failed to open pack. Please try again.");
       setPhase("error");
     }
   }, [packId, onOpened]);
@@ -383,9 +367,7 @@ const PackOpenModal: React.FC<Props> = ({
       <div className="relative w-full max-w-5xl rounded-3xl bg-slate-950/80 ring-1 ring-white/10 backdrop-blur-xl p-6 flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h3 className="text-xl font-semibold">
-            Pack Opening
-          </h3>
+          <h3 className="text-xl font-semibold">Pack Opening</h3>
           <button
             onClick={onClose}
             className="rounded-lg px-3 py-1 text-sm text-slate-300 hover:bg-white/10"
@@ -397,11 +379,7 @@ const PackOpenModal: React.FC<Props> = ({
         {/* Body (scrollable on mobile) */}
         <div className="mt-6 flex-1 overflow-y-auto">
           <div className="grid place-items-center">
-            {phase === "error" && (
-              <div className="text-red-400 text-sm">
-                {err}
-              </div>
-            )}
+            {phase === "error" && <div className="text-red-400 text-sm">{err}</div>}
 
             {phase === "buying" && (
               <div className="flex flex-col items-center gap-4 text-slate-300">
@@ -423,10 +401,7 @@ const PackOpenModal: React.FC<Props> = ({
                     damping: 16,
                   }}
                 >
-                  <PackVisual
-                    theme={theme}
-                    onOpen={openPack}
-                  />
+                  <PackVisual theme={theme} onOpen={openPack} />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -440,11 +415,7 @@ const PackOpenModal: React.FC<Props> = ({
                   animate={{ opacity: 0 }}
                   transition={{ duration: 0.3 }}
                 >
-                  <PackVisual
-                    theme={theme}
-                    onOpen={() => {}}
-                    disabled
-                  />
+                  <PackVisual theme={theme} onOpen={() => {}} disabled />
                 </motion.div>
                 {/* shred halves */}
                 <motion.div
@@ -466,9 +437,7 @@ const PackOpenModal: React.FC<Props> = ({
                     ease: "easeOut",
                   }}
                 >
-                  <div
-                    className={`w-full h-full rounded-t-3xl ${theme.shredTop}`}
-                  />
+                  <div className={`w-full h-full rounded-t-3xl ${theme.shredTop}`} />
                 </motion.div>
                 <motion.div
                   className="absolute bottom-0 left-0 right-0 h-1/2"
@@ -489,9 +458,7 @@ const PackOpenModal: React.FC<Props> = ({
                     ease: "easeOut",
                   }}
                 >
-                  <div
-                    className={`w-full h-full rounded-b-3xl ${theme.shredBottom}`}
-                  />
+                  <div className={`w-full h-full rounded-b-3xl ${theme.shredBottom}`} />
                 </motion.div>
               </div>
             )}
@@ -499,11 +466,7 @@ const PackOpenModal: React.FC<Props> = ({
             {phase === "revealed" && (
               <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-6">
                 {monsters?.map((m, i) => (
-                  <MonsterRevealCard
-                    key={m.id}
-                    monster={m}
-                    delay={i * 0.12}
-                  />
+                  <MonsterRevealCard key={m.id} monster={m} delay={i * 0.12} />
                 ))}
               </div>
             )}

@@ -9,6 +9,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Editions for user-owned monsters.
+// BASE = normal card, THEMED = Christmas Terrors etc, LIMITED = 1/100, 1/10, etc.
+enum EditionType {
+  BASE
+  THEMED
+  LIMITED
+}
+
 model User {
   id                 String               @id @default(cuid())
   email              String               @unique
@@ -55,6 +63,16 @@ model UserMonster {
   baseAttack         Int
   baseMagic          Int
   baseDefense        Int
+
+  // Theming / sets & editions (Christmas Terrors, Halloween, limited 1/100 etc)
+  setCode            String?              // e.g. "BASE", "CHRISTMAS_TERRORS_2025"
+  editionType        EditionType          @default(BASE)
+  serialNumber       Int?                 // e.g. 1–100
+  editionLabel       String?              // e.g. "1 of 100", "Founders Edition"
+  artBasePath        String?              // e.g. "/cards/base/ARS_1234.png"
+  artHoverPath       String?              // e.g. "/cards/base/ARS_1234_hover.webm"
+  traitsJson         Json?                // archetype metadata (element, bodyType, etc.)
+
   createdAt          DateTime             @default(now())
 
   // Evolution + cumulative stats

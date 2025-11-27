@@ -53,7 +53,9 @@ export async function POST(req: NextRequest) {
 
       // ✅ Prevent buying your own listing
       if (listing.sellerId === user.id) {
-        throw new Error("You cannot buy your own listing.");
+        throw new Error(
+          "You cannot buy your own listing."
+        );
       }
 
       const buyer = await tx.user.findUnique({
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // ✅ Deactivate the listing so it no longer shows up
+      // ✅ Deactivate the listing
       await tx.marketListing.update({
         where: { id: listing.id },
         data: {
@@ -113,22 +115,24 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // ✅ NEW: log history for both buyer and seller
-      await tx.monsterHistoryEvent.createMany({
-        data: [
-          {
-            userMonsterId: listing.userMonsterId,
-            actorUserId: buyer.id,
-            action: "BOUGHT",
-            description: `Bought from ${listing.seller.email} for ${listing.price} coins.`,
-          },
-          {
-            userMonsterId: listing.userMonsterId,
-            actorUserId: listing.sellerId,
-            action: "SOLD",
-            description: `Sold to ${buyer.email} for ${listing.price} coins.`,
-          },
-        ],
+      // 🔹 History: SOLD (seller perspective)
+      await tx.monsterHistoryEvent.create({
+        data: {
+          userMonsterId: listing.userMonsterId,
+          actorUserId: listing.sellerId,
+          action: "SOLD",
+          description: `Sold for ${listing.price} coins to ${buyer.email || "another manager"}.`,
+        },
+      });
+
+      // 🔹 History: BOUGHT (buyer perspective)
+      await tx.monsterHistoryEvent.create({
+        data: {
+          userMonsterId: listing.userMonsterId,
+          actorUserId: buyer.id,
+          action: "BOUGHT",
+          description: `Bought for ${listing.price} coins from ${listing.seller.email || "another manager"}.`,
+        },
       });
 
       return {

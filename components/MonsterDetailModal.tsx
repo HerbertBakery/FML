@@ -33,6 +33,10 @@ type ApiMonster = {
   totalFantasyPoints: number;
   isConsumed: boolean;
   createdAt: string;
+
+  // NEW: art path (optional, if backend sends it)
+  artBasePath?: string | null;
+
   owner: {
     id: string;
     email: string;
@@ -71,6 +75,9 @@ type MonsterDetail = {
   createdAt?: string;
   ownerEmail?: string | null;
   ownerUsername?: string | null;
+
+  // NEW: art path for modal
+  artBasePath?: string | null;
 };
 
 type HistoryEvent = {
@@ -86,6 +93,18 @@ type MonsterDetailModalProps = {
   monsterId: string;
   onClose: () => void;
 };
+
+// Same art logic as marketplace/squad
+function getArtUrlForMonster(m: {
+  templateCode: string;
+  artBasePath?: string | null;
+}): string {
+  if (m.artBasePath) return m.artBasePath;
+  if (m.templateCode) {
+    return `/cards/base/${m.templateCode}.png`;
+  }
+  return "/cards/base/test.png";
+}
 
 export default function MonsterDetailModal({
   monsterId,
@@ -152,6 +171,8 @@ export default function MonsterDetailModal({
             createdAt: apiMonster.createdAt,
             ownerEmail: apiMonster.owner?.email ?? null,
             ownerUsername: apiMonster.owner?.username ?? null,
+            // NEW: art base path
+            artBasePath: apiMonster.artBasePath ?? null,
           });
 
           // Map API history (with actor) -> modal history
@@ -236,7 +257,16 @@ export default function MonsterDetailModal({
           {!loading && !error && monster && (
             <>
               {/* Top card with core info */}
-              <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-3 space-y-1">
+              <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-3 space-y-2">
+                {/* NEW: Card image */}
+                <div className="w-24 aspect-[3/4] overflow-hidden rounded-lg border border-slate-700 bg-slate-900/60 mx-auto mb-1">
+                  <img
+                    src={getArtUrlForMonster(monster)}
+                    alt={monster.displayName}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold text-slate-100">

@@ -27,13 +27,12 @@ export async function GET(req: NextRequest) {
   });
 
   // Count how many starter packs were opened (optional, matches your HomePage)
-  const starterPacksOpened =
-    await prisma.packOpen.count({
-      where: {
-        userId: user.id,
-        packType: "starter",
-      },
-    });
+  const starterPacksOpened = await prisma.packOpen.count({
+    where: {
+      userId: user.id,
+      packType: "starter",
+    },
+  });
 
   const result = monsters.map((m) => ({
     id: m.id,
@@ -47,6 +46,13 @@ export async function GET(req: NextRequest) {
     baseMagic: m.baseMagic,
     baseDefense: m.baseDefense,
     evolutionLevel: m.evolutionLevel,
+
+    // NEW: edition + art fields, mirroring what Prisma has
+    setCode: m.setCode ?? null,
+    editionType: m.editionType ?? null,
+    serialNumber: m.serialNumber ?? null,
+    editionLabel: m.editionLabel ?? null,
+    artBasePath: m.artBasePath ?? null,
   }));
 
   return NextResponse.json({

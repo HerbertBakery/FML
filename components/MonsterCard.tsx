@@ -12,6 +12,14 @@ export type MonsterCardMonster = {
   baseMagic: number;
   baseDefense: number;
   evolutionLevel?: number;
+
+  // NEW: visual / edition info
+  artUrl?: string;        // main card art (static or animated)
+  hoverArtUrl?: string;   // optional alt art on hover
+  setCode?: string;       // e.g. "BASE", "CHRISTMAS_TERRORS_2025"
+  editionType?: string;   // "BASE" | "THEMED" | "LIMITED" (for badges if needed)
+  serialNumber?: number;  // e.g. 23 (for #23/100)
+  editionLabel?: string;  // e.g. "1 of 100", "Founders Edition"
 };
 
 type MonsterCardProps = {
@@ -74,11 +82,38 @@ export default function MonsterCard({
     monster.rarity
   );
 
+  const hasArt = !!monster.artUrl;
+  const editionText =
+    monster.editionLabel ??
+    (typeof monster.serialNumber === "number"
+      ? `Serial #${monster.serialNumber}`
+      : undefined);
+
   return (
     <div
-      className={`rounded-xl border ${border} ${background} p-3 text-xs flex flex-col justify-between gap-2`}
+      className={`group rounded-xl border ${border} ${background} p-3 text-xs flex flex-col justify-between gap-2 overflow-hidden`}
     >
       <div>
+        {/* Art / image area */}
+        {hasArt && (
+          <div className="mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4]">
+            {/* Base art */}
+            <img
+              src={monster.artUrl}
+              alt={monster.displayName}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+            {/* Optional hover art overlay */}
+            {monster.hoverArtUrl && (
+              <img
+                src={monster.hoverArtUrl}
+                alt={monster.displayName}
+                className="w-full h-full object-cover absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              />
+            )}
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-1">
           <span className="font-semibold">
             {monster.displayName}
@@ -93,16 +128,25 @@ export default function MonsterCard({
             </span>
           )}
         </div>
+
         <p className="text-[11px] text-slate-300">
           {monster.realPlayerName} • {monster.club}
         </p>
+
         <p className="text-[11px] text-slate-400 mt-1">
           {monster.position} • ATK {monster.baseAttack} • MAG{" "}
           {monster.baseMagic} • DEF {monster.baseDefense}
         </p>
+
         {typeof monster.evolutionLevel === "number" && (
           <p className="text-[10px] text-emerald-300 mt-1">
             Evo Lv. {monster.evolutionLevel}
+          </p>
+        )}
+
+        {editionText && (
+          <p className="text-[10px] text-amber-300 mt-1">
+            {editionText}
           </p>
         )}
       </div>

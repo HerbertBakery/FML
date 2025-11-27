@@ -14,7 +14,7 @@ function positionsSummary(monsters: { position: string }[]) {
     GK: 0,
     DEF: 0,
     MID: 0,
-    FWD: 0
+    FWD: 0,
   };
   for (const m of monsters) {
     if (counts[m.position] !== undefined) {
@@ -40,9 +40,9 @@ export async function GET(req: NextRequest) {
     include: {
       slots: {
         include: { userMonster: true },
-        orderBy: { slot: "asc" }
-      }
-    }
+        orderBy: { slot: "asc" },
+      },
+    },
   });
 
   if (!squad) {
@@ -59,14 +59,22 @@ export async function GET(req: NextRequest) {
     rarity: slot.userMonster.rarity,
     baseAttack: slot.userMonster.baseAttack,
     baseMagic: slot.userMonster.baseMagic,
-    baseDefense: slot.userMonster.baseDefense
+    baseDefense: slot.userMonster.baseDefense,
+    evolutionLevel: slot.userMonster.evolutionLevel,
+
+    // NEW: edition + art to mirror collection / marketplace
+    setCode: slot.userMonster.setCode ?? null,
+    editionType: slot.userMonster.editionType ?? null,
+    serialNumber: slot.userMonster.serialNumber ?? null,
+    editionLabel: slot.userMonster.editionLabel ?? null,
+    artBasePath: slot.userMonster.artBasePath ?? null,
   }));
 
   return NextResponse.json({
     squad: {
       id: squad.id,
-      monsters
-    }
+      monsters,
+    },
   });
 }
 
@@ -105,8 +113,8 @@ export async function POST(req: NextRequest) {
   const monsters = await prisma.userMonster.findMany({
     where: {
       id: { in: uniqueIds },
-      userId: user.id
-    }
+      userId: user.id,
+    },
   });
 
   if (monsters.length !== uniqueIds.length) {
@@ -121,11 +129,16 @@ export async function POST(req: NextRequest) {
   // Rules:
   // - Exactly 1 GK
   // - At least 1 DEF, 1 MID, 1 FWD
-  if (counts.GK !== 1 || counts.DEF < 1 || counts.MID < 1 || counts.FWD < 1) {
+  if (
+    counts.GK !== 1 ||
+    counts.DEF < 1 ||
+    counts.MID < 1 ||
+    counts.FWD < 1
+  ) {
     return NextResponse.json(
       {
         error:
-          "Your squad must contain exactly 1 GK and at least 1 DEF, 1 MID, and 1 FWD."
+          "Your squad must contain exactly 1 GK and at least 1 DEF, 1 MID, and 1 FWD.",
       },
       { status: 400 }
     );
@@ -134,32 +147,32 @@ export async function POST(req: NextRequest) {
   // Overwrite any existing squads
   const existing = await prisma.squad.findMany({
     where: { userId: user.id },
-    select: { id: true }
+    select: { id: true },
   });
   const existingIds = existing.map((s) => s.id);
 
   const squad = await prisma.$transaction(async (tx) => {
     if (existingIds.length > 0) {
       await tx.squadMonster.deleteMany({
-        where: { squadId: { in: existingIds } }
+        where: { squadId: { in: existingIds } },
       });
       await tx.squad.deleteMany({
-        where: { id: { in: existingIds } }
+        where: { id: { in: existingIds } },
       });
     }
 
     const newSquad = await tx.squad.create({
       data: {
-        userId: user.id
-      }
+        userId: user.id,
+      },
     });
 
     await tx.squadMonster.createMany({
       data: uniqueIds.map((monsterId, index) => ({
         squadId: newSquad.id,
         userMonsterId: monsterId,
-        slot: index
-      }))
+        slot: index,
+      })),
     });
 
     return newSquad;
@@ -167,7 +180,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     squad: {
-      id: squad.id
-    }
+      id: squad.id,
+    },
   });
 }

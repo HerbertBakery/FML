@@ -5,6 +5,10 @@
 // - Paid packs (bronze/silver/gold): cost coins from user balance.
 // - Uses monsters-2025-26.json (teams + players) and generates rarity + base stats on the fly,
 //   but with smarter rarity so fringe players are almost always common.
+//
+// Now also:
+// - Prepares for themed / limited editions via pack definition knobs.
+// - Stores basic art path + setCode on UserMonster so front-end cards can show images.
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -225,6 +229,23 @@ function generateBaseStats(position: string, rarity: string) {
   };
 }
 
+// Helper: decide if this pull becomes a limited-edition shell.
+// For now this just flips a flag based on pack's limitedEditionChance.
+// Later you can enforce true 1/100 / 1/10 using a counter table.
+function maybeRollLimitedEdition(
+  limitedEditionChance: number | undefined
+): boolean {
+  if (!limitedEditionChance || limitedEditionChance <= 0) return false;
+  return Math.random() < limitedEditionChance;
+}
+
+// Helper: build a default art path for a BASE card.
+// You can change this naming convention to match however you export art.
+function buildBaseArtPath(player: RawPlayer): string {
+  // Example: /cards/base/{code}.png
+  return `/cards/base/${player.code}.png`;
+}
+
 // Pick N random players for a pack, with tier-aware rarity
 function pickPlayersForPack(
   size: number,
@@ -353,6 +374,21 @@ export async function POST(req: NextRequest) {
 
       const createdMonsters = [];
       for (const p of chosen) {
+        // Basic theming defaults: everything is BASE unless overridden later.
+        const isLimited = maybeRollLimitedEdition(
+          def.limitedEditionChance
+        );
+
+        // You can change this later per-set/per-player.
+        const setCode = "BASE";
+
+        // For now we don't enforce true "1 of 100", but we already
+        // have fields in place to store that once you add a counter.
+        const editionType = isLimited ? "LIMITED" : "BASE";
+        const editionLabel = isLimited ? "Limited Edition" : null;
+
+        const artBasePath = buildBaseArtPath(p);
+
         const created = await tx.userMonster.create({
           data: {
             userId: dbUser.id,
@@ -364,7 +400,14 @@ export async function POST(req: NextRequest) {
             rarity: p.rarity,
             baseAttack: p.baseAttack,
             baseMagic: p.baseMagic,
-            baseDefense: p.baseDefense
+            baseDefense: p.baseDefense,
+
+            // NEW: theming + art
+            setCode,
+            editionType,
+            editionLabel: editionLabel ?? undefined,
+            artBasePath,
+            // artHoverPath / traitsJson can be filled later via a script/admin tool
           }
         });
 
@@ -402,7 +445,14 @@ export async function POST(req: NextRequest) {
         baseAttack: m.baseAttack,
         baseMagic: m.baseMagic,
         baseDefense: m.baseDefense,
-        evolutionLevel: m.evolutionLevel
+        evolutionLevel: m.evolutionLevel,
+        // Expose basic art + edition info to the frontend if you want to plug
+        // directly into MonsterCard.artUrl / editionLabel now:
+        artBasePath: m.artBasePath,
+        setCode: m.setCode,
+        editionType: m.editionType,
+        editionLabel: m.editionLabel,
+        serialNumber: m.serialNumber
       }))
     });
   } catch (err: any) {

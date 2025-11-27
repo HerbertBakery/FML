@@ -9,6 +9,15 @@ export type PackDefinition = {
   cost: number; // 0 for free starter packs
   size: number; // how many monsters
   rarityBias: "normal" | "premium";
+
+  // NEW: optional theming knobs
+  // Codes like "CHRISTMAS_TERRORS_2025" which you can map to specific
+  // MonsterTemplate.setCode values when building the pack pools.
+  featuredSetCodes?: string[];
+
+  // Chance [0–1] that a card in this pack is a LIMITED edition
+  // (e.g. 0.05 = 5% per card roll, handled in the pack-opening logic).
+  limitedEditionChance?: number;
 };
 
 export const PACK_DEFINITIONS: PackDefinition[] = [
@@ -20,6 +29,8 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
     cost: 0,
     size: 4,
     rarityBias: "normal",
+    featuredSetCodes: ["BASE"],
+    limitedEditionChance: 0,
   },
   {
     id: "bronze",
@@ -29,6 +40,8 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
     cost: 400,
     size: 4,
     rarityBias: "normal",
+    featuredSetCodes: ["BASE"],
+    limitedEditionChance: 0.005, // 0.5% chance per card, adjust as you like
   },
   {
     id: "silver",
@@ -38,6 +51,8 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
     cost: 900,
     size: 5,
     rarityBias: "premium",
+    featuredSetCodes: ["BASE"],
+    limitedEditionChance: 0.01,
   },
   {
     id: "gold",
@@ -47,6 +62,8 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
     cost: 1800,
     size: 6,
     rarityBias: "premium",
+    featuredSetCodes: ["BASE"], // later you can add "CHRISTMAS_TERRORS_2025"
+    limitedEditionChance: 0.03, // e.g. 3% per card
   },
 ];
 
