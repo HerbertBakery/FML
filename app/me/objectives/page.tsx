@@ -1,8 +1,7 @@
-// app/me/objectives/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import PackOpenModal, { PackId as PackType } from "@/components/PackOpenModal";
+import PackOpenModal, { PackId } from "@/components/PackOpenModal";
 
 type ObjectiveDTO = {
   id: string;
@@ -44,19 +43,11 @@ type ApiResponse = {
   error?: string;
 };
 
-function normalizePackId(raw: string | null | undefined): PackType | null {
-  if (!raw) return null;
-  const lower = raw.toLowerCase();
-  if (
-    lower === "starter" ||
-    lower === "bronze" ||
-    lower === "silver" ||
-    lower === "gold"
-  ) {
-    return lower as PackType;
-  }
-  return null;
-}
+// For when we get a pack from an objective or set
+type PendingRewardPack = {
+  packId: PackId;
+  rewardPackId: string;
+};
 
 export default function ObjectivesPage() {
   const [data, setData] = useState<ApiResponse | null>(null);
@@ -67,8 +58,7 @@ export default function ObjectivesPage() {
   const [claimingSetId, setClaimingSetId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  // NEW: when not null, we show the pack opening modal for this reward pack
-  const [rewardPackId, setRewardPackId] = useState<PackType | null>(null);
+  const [pendingRewardPack, setPendingRewardPack] = useState<PendingRewardPack | null>(null);
 
   async function load() {
     setLoading(true);
@@ -118,23 +108,30 @@ export default function ObjectivesPage() {
       if (!res.ok || j.error) {
         setToast(j.error || "Failed to claim reward.");
       } else {
-        // Decide what to do based on reward type
-        if (obj.rewardType === "pack") {
-          const packId = normalizePackId(obj.rewardValue);
-          if (packId) {
-            // Show pack opening modal and let it immediately open that reward pack
-            setRewardPackId(packId);
-            setToast(`Reward claimed: ${obj.rewardValue.toUpperCase()} pack!`);
-          } else {
-            setToast(`Reward claimed: ${obj.rewardValue}`);
+        const rewardLabel =
+          obj.rewardType === "coins"
+            ? `${obj.rewardValue} coins`
+            : obj.rewardType === "pack"
+            ? `${obj.rewardValue.toUpperCase()} pack`
+            : obj.rewardType;
+
+        setToast(`Reward claimed: ${rewardLabel}`);
+
+        // If this was a pack reward, and backend created a reward pack, open it
+        if (
+          j.rewardType === "pack" &&
+          typeof j.rewardValue === "string" &&
+          j.createdRewardPackId
+        ) {
+          const rv = j.rewardValue.toLowerCase();
+          if (rv === "starter" || rv === "bronze" || rv === "silver" || rv === "gold") {
+            setPendingRewardPack({
+              packId: rv as PackId,
+              rewardPackId: j.createdRewardPackId as string,
+            });
           }
-        } else if (obj.rewardType === "coins") {
-          setToast(`Reward claimed: ${obj.rewardValue} coins`);
-        } else {
-          setToast("Reward claimed.");
         }
 
-        // Refresh objective data so UI reflects claimed status
         await load();
       }
     } catch {
@@ -162,18 +159,27 @@ export default function ObjectivesPage() {
       if (!res.ok || j.error) {
         setToast(j.error || "Failed to claim path reward.");
       } else {
-        if (set.rewardType === "pack") {
-          const packId = normalizePackId(set.rewardValue);
-          if (packId) {
-            setRewardPackId(packId);
-            setToast(`Path reward claimed: ${set.rewardValue.toUpperCase()} pack!`);
-          } else {
-            setToast("Path reward claimed.");
+        const rewardLabel =
+          set.rewardType === "coins"
+            ? `${set.rewardValue} coins`
+            : set.rewardType === "pack"
+            ? `${set.rewardValue.toUpperCase()} pack`
+            : set.rewardType;
+
+        setToast(`Path reward claimed: ${rewardLabel}`);
+
+        if (
+          j.rewardType === "pack" &&
+          typeof j.rewardValue === "string" &&
+          j.createdRewardPackId
+        ) {
+          const rv = j.rewardValue.toLowerCase();
+          if (rv === "starter" || rv === "bronze" || rv === "silver" || rv === "gold") {
+            setPendingRewardPack({
+              packId: rv as PackId,
+              rewardPackId: j.createdRewardPackId as string,
+            });
           }
-        } else if (set.rewardType === "coins") {
-          setToast(`Path reward claimed: ${set.rewardValue} coins`);
-        } else {
-          setToast("Path reward claimed.");
         }
 
         await load();
@@ -187,7 +193,6 @@ export default function ObjectivesPage() {
 
   return (
     <>
-      {/* MAIN PAGE */}
       <div className="min-h-screen bg-slate-950 text-slate-100">
         <div className="mx-auto max-w-5xl px-4 py-6">
           {/* Header */}
@@ -313,7 +318,6 @@ export default function ObjectivesPage() {
                       </div>
                     </div>
 
-                    {/* Progress bar */}
                     <div className="mt-3">
                       <div className="flex items-center justify-between text-[11px] text-slate-400">
                         <span>
@@ -329,7 +333,6 @@ export default function ObjectivesPage() {
                       </div>
                     </div>
 
-                    {/* Objectives list */}
                     <div className="mt-4 space-y-2">
                       {set.objectives.map((obj) => {
                         const done = !!obj.completedAt;
@@ -348,9 +351,7 @@ export default function ObjectivesPage() {
                             ? 0
                             : Math.min(
                                 100,
-                                Math.round(
-                                  (obj.currentValue / obj.targetValue) * 100
-                                )
+                                Math.round((obj.currentValue / obj.targetValue) * 100)
                               );
 
                         return (
@@ -400,14 +401,10 @@ export default function ObjectivesPage() {
                                     onClick={() => handleClaimObjective(obj)}
                                     disabled={claimingObjectiveId === obj.id}
                                     className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold text-slate-950 bg-emerald-400 hover:bg-emerald-300 ${
-                                      claimingObjectiveId === obj.id
-                                        ? "opacity-70"
-                                        : "animate-pulse"
+                                      claimingObjectiveId === obj.id ? "opacity-70" : "animate-pulse"
                                     }`}
                                   >
-                                    {claimingObjectiveId === obj.id
-                                      ? "Claiming..."
-                                      : "Claim"}
+                                    {claimingObjectiveId === obj.id ? "Claiming..." : "Claim"}
                                   </button>
                                 )}
                               </div>
@@ -439,17 +436,16 @@ export default function ObjectivesPage() {
         </div>
       </div>
 
-      {/* 🔥 PACK OPEN MODAL FOR REWARD PACKS */}
-      {rewardPackId && (
+      {/* Reward pack modal, opened right after claim */}
+      {pendingRewardPack && (
         <PackOpenModal
-          packId={rewardPackId}
+          packId={pendingRewardPack.packId}
+          rewardPackId={pendingRewardPack.rewardPackId}
           redirectToSquad={false}
-          onOpened={() => {
-            // Optionally refresh objectives/coins again after pack open
-            void load();
-          }}
-          onClose={() => {
-            setRewardPackId(null);
+          onClose={() => setPendingRewardPack(null)}
+          onOpened={async () => {
+            // After opening, refresh objectives so claimed state is correct
+            await load();
           }}
         />
       )}

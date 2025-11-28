@@ -1,4 +1,3 @@
-// app/components/PackOpenModal.tsx
 "use client";
 
 import React, {
@@ -41,6 +40,8 @@ type PackOpenResponse = {
 
 type Props = {
   packId: PackId;
+  // NEW: if provided, this modal opens a reward pack (free) instead of charging coins
+  rewardPackId?: string;
   onClose?: () => void;
   onOpened?: (monsters: OpenedMonster[], coinsAfter?: number) => void;
   /**
@@ -53,15 +54,10 @@ type Props = {
 // -------------------- Shared art helper (same logic as marketplace) --------------------
 
 function getArtUrlForMonster(m: Pick<OpenedMonster, "templateCode" | "artBasePath">): string {
-  // If backend already provides a path, use it
   if (m.artBasePath) return m.artBasePath;
-
-  // Otherwise derive from templateCode
   if (m.templateCode) {
     return `/cards/base/${m.templateCode}.png`;
   }
-
-  // Fallback if nothing else available
   return "/cards/base/test.png";
 }
 
@@ -201,7 +197,6 @@ const MonsterRevealCard: React.FC<{ monster: OpenedMonster; delay?: number }> = 
         {monster.position} • {monster.club}
       </div>
 
-      {/* IMAGE AREA – enlarged to fill most of the card and spin with the card */}
       <div className="mt-6 mb-3 relative w-full h-44 sm:h-56 overflow-hidden rounded-xl">
         <motion.img
           src={artUrl}
@@ -214,7 +209,6 @@ const MonsterRevealCard: React.FC<{ monster: OpenedMonster; delay?: number }> = 
         />
       </div>
 
-      {/* TEXT / STATS */}
       <div className="flex flex-col items-center justify-start">
         <div className="text-center">
           <div
@@ -260,12 +254,9 @@ const PackVisual: React.FC<{
         damping: 14,
       }}
     >
-      {/* Solid themed foil background */}
       <div
         className={`absolute inset-0 bg-gradient-to-br ${theme.bodyFrom} ${theme.bodyVia} ${theme.bodyTo}`}
       />
-
-      {/* Shiny moving highlight */}
       <motion.div
         className={`absolute -left-1/3 top-0 h-full w-1/3 bg-gradient-to-r ${theme.sheenFrom} to-transparent`}
         animate={{ left: ["-35%", "120%"] }}
@@ -276,8 +267,6 @@ const PackVisual: React.FC<{
         }}
         style={{ mixBlendMode: "screen" }}
       />
-
-      {/* Branding */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="text-center px-4">
           <h2 className={`text-2xl font-extrabold drop-shadow-lg ${theme.brandText}`}>
@@ -290,8 +279,6 @@ const PackVisual: React.FC<{
           </p>
         </div>
       </div>
-
-      {/* Bottom hint */}
       {!disabled && (
         <div
           className={`absolute bottom-3 left-0 right-0 text-center text-xs font-semibold ${theme.subText}`}
@@ -308,6 +295,7 @@ type Phase = "idle" | "buying" | "ready" | "opening" | "revealed" | "error";
 
 const PackOpenModal: React.FC<Props> = ({
   packId,
+  rewardPackId,
   onClose,
   onOpened,
   redirectToSquad = true,
@@ -318,21 +306,29 @@ const PackOpenModal: React.FC<Props> = ({
   const [err, setErr] = useState<string | null>(null);
 
   const theme = THEMES[packId];
-
   const didBuyRef = useRef(false);
 
   const buyPack = useCallback(async () => {
     setErr(null);
     setPhase("buying");
     try {
-      const r = await fetch("/api/packs/open", {
+      const url = rewardPackId
+        ? "/api/reward-packs/open"
+        : "/api/packs/open";
+
+      const body = rewardPackId
+        ? { rewardPackId }
+        : { packId };
+
+      const r = await fetch(url, {
         method: "POST",
         credentials: "include",
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ packId }),
+        body: JSON.stringify(body),
       });
+
       const j = (await r.json().catch(() => null)) as PackOpenResponse | null;
 
       if (!r.ok || !j || j.error) {
@@ -347,7 +343,7 @@ const PackOpenModal: React.FC<Props> = ({
       setErr(e?.message || "Failed to open pack. Please try again.");
       setPhase("error");
     }
-  }, [packId, onOpened]);
+  }, [packId, rewardPackId, onOpened]);
 
   useEffect(() => {
     if (didBuyRef.current) return;
@@ -364,8 +360,6 @@ const PackOpenModal: React.FC<Props> = ({
   }, [phase]);
 
   function handleAddToSquad() {
-    // Monsters are already in collection.
-    // If redirectToSquad is true, go to /squad; otherwise just close the modal.
     if (redirectToSquad) {
       onClose?.();
       router.push("/squad");
@@ -377,9 +371,10 @@ const PackOpenModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 sm:p-6 overflow-y-auto">
       <div className="relative w-full max-w-5xl rounded-3xl bg-slate-950/80 ring-1 ring-white/10 backdrop-blur-xl p-6 flex flex-col max-h-[90vh]">
-        {/* Header */}
         <div className="flex items-center justify-between">
-          <h3 className="text-xl font-semibold">Pack Opening</h3>
+          <h3 className="text-xl font-semibold">
+            {rewardPackId ? "Reward Pack Opening" : "Pack Opening"}
+          </h3>
           <button
             onClick={onClose}
             className="rounded-lg px-3 py-1 text-sm text-slate-300 hover:bg-white/10"
@@ -388,7 +383,6 @@ const PackOpenModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Body (scrollable on mobile) */}
         <div className="mt-6 flex-1 overflow-y-auto">
           <div className="grid place-items-center">
             {phase === "error" && <div className="text-red-400 text-sm">{err}</div>}
@@ -420,7 +414,6 @@ const PackOpenModal: React.FC<Props> = ({
 
             {phase === "opening" && (
               <div className="relative w-60 h-80">
-                {/* faint pack underlay */}
                 <motion.div
                   className="absolute inset-0"
                   initial={{ opacity: 1 }}
@@ -429,7 +422,6 @@ const PackOpenModal: React.FC<Props> = ({
                 >
                   <PackVisual theme={theme} onOpen={() => {}} disabled />
                 </motion.div>
-                {/* shred halves */}
                 <motion.div
                   className="absolute top-0 left-0 right-0 h-1/2"
                   initial={{
@@ -485,7 +477,6 @@ const PackOpenModal: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Footer */}
         <div className="mt-8 flex items-center justify-end gap-2">
           {phase === "revealed" && (
             <>
