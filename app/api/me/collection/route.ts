@@ -15,11 +15,31 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Only return active (not consumed) monsters
+  // Find all monsters THIS user currently has listed for sale (active listings)
+  const activeListings = await prisma.marketListing.findMany({
+    where: {
+      sellerId: user.id,
+      isActive: true,
+    },
+    select: {
+      userMonsterId: true,
+    },
+  });
+
+  const listedIds = activeListings.map((l) => l.userMonsterId);
+
+  // Only return active (not consumed) monsters that are NOT currently listed
   const monsters = await prisma.userMonster.findMany({
     where: {
       userId: user.id,
       isConsumed: false,
+      ...(listedIds.length > 0
+        ? {
+            id: {
+              notIn: listedIds,
+            },
+          }
+        : {}),
     },
     orderBy: {
       createdAt: "desc",
@@ -47,7 +67,7 @@ export async function GET(req: NextRequest) {
     baseDefense: m.baseDefense,
     evolutionLevel: m.evolutionLevel,
 
-    // NEW: edition + art fields, mirroring what Prisma has
+    // edition + art fields
     setCode: m.setCode ?? null,
     editionType: m.editionType ?? null,
     serialNumber: m.serialNumber ?? null,

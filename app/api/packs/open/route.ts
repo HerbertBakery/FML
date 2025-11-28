@@ -9,16 +9,15 @@
 // Now also:
 // - Prepares for themed / limited editions via pack definition knobs.
 // - Stores basic art path + setCode on UserMonster so front-end cards can show images.
+// - Updates objectives via the Season 1 sync helper (open packs, collection size, etc.).
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
-import {
-  getPackDefinition,
-  PackId
-} from "@/lib/packs";
+import { getPackDefinition, PackId } from "@/lib/packs";
 
 import rawTeams from "@/data/monsters-2025-26.json";
+import { syncObjectivesForUserSeason1 } from "@/lib/objectives/syncSeason1";
 
 export const runtime = "nodejs";
 
@@ -50,9 +49,6 @@ const ALL_PLAYERS: RawPlayer[] = (rawTeams as RawTeam[]).flatMap(
 
 // --- Tiering logic --------------------------------------------------
 
-// Very rough: we use keyword matches on names to classify.
-// You can tweak this list any time without touching DB.
-
 const ELITE_KEYWORDS = [
   "haaland",
   "salah",
@@ -75,7 +71,7 @@ const ELITE_KEYWORDS = [
   "nunez",
   "gordon",
   "isak",
-  "odegaard"
+  "odegaard",
 ];
 
 const CORE_KEYWORDS = [
@@ -105,7 +101,7 @@ const CORE_KEYWORDS = [
   "reese-james",
   "madueke",
   "martial",
-  "odegaard" // (appears twice, doesn't matter)
+  "odegaard",
 ];
 
 type PlayerTier = "elite" | "core" | "fringe";
@@ -133,7 +129,6 @@ function getPlayerTier(player: RawPlayer): PlayerTier {
     }
   }
 
-  // Everyone else = fringe squad / bench / rotation
   return "fringe";
 }
 
@@ -147,22 +142,17 @@ function rollRarity(
   const roll = Math.random();
 
   if (tier === "fringe") {
-    // Bench guys: hard cap at rare
-    // 85% common, 15% rare, 0 epic/legendary
     if (roll < 0.85) return "COMMON";
     return "RARE";
   }
 
   if (tier === "core") {
     if (bias === "normal") {
-      // 60% C, 30% R, 8% E, 2% L
       if (roll < 0.6) return "COMMON";
       if (roll < 0.9) return "RARE";
       if (roll < 0.98) return "EPIC";
       return "LEGENDARY";
     } else {
-      // premium bias:
-      // 45% C, 30% R, 18% E, 7% L
       if (roll < 0.45) return "COMMON";
       if (roll < 0.75) return "RARE";
       if (roll < 0.93) return "EPIC";
@@ -170,16 +160,13 @@ function rollRarity(
     }
   }
 
-  // tier === "elite"
+  // elite
   if (bias === "normal") {
-    // 30% C, 35% R, 25% E, 10% L
     if (roll < 0.3) return "COMMON";
     if (roll < 0.65) return "RARE";
     if (roll < 0.9) return "EPIC";
     return "LEGENDARY";
   } else {
-    // premium bias on elite:
-    // 15% C, 30% R, 35% E, 20% L
     if (roll < 0.15) return "COMMON";
     if (roll < 0.45) return "RARE";
     if (roll < 0.8) return "EPIC";
@@ -188,7 +175,6 @@ function rollRarity(
 }
 
 function generateBaseStats(position: string, rarity: string) {
-  // Baseline per position
   let baseAtk = 40;
   let baseMag = 40;
   let baseDef = 40;
@@ -212,26 +198,21 @@ function generateBaseStats(position: string, rarity: string) {
     baseDef = 30;
   }
 
-  // Rarity bonus
   let bonus = 0;
   const r = rarity.toUpperCase();
   if (r === "RARE") bonus = 10;
   else if (r === "EPIC") bonus = 20;
   else if (r === "LEGENDARY") bonus = 30;
 
-  // Tiny random variation to make stats feel less copy/paste
   const rand = () => Math.floor(Math.random() * 6); // 0–5
 
   return {
     baseAttack: baseAtk + bonus + rand(),
     baseMagic: baseMag + bonus + rand(),
-    baseDefense: baseDef + bonus + rand()
+    baseDefense: baseDef + bonus + rand(),
   };
 }
 
-// Helper: decide if this pull becomes a limited-edition shell.
-// For now this just flips a flag based on pack's limitedEditionChance.
-// Later you can enforce true 1/100 / 1/10 using a counter table.
 function maybeRollLimitedEdition(
   limitedEditionChance: number | undefined
 ): boolean {
@@ -239,10 +220,7 @@ function maybeRollLimitedEdition(
   return Math.random() < limitedEditionChance;
 }
 
-// Helper: build a default art path for a BASE card.
-// You can change this naming convention to match however you export art.
 function buildBaseArtPath(player: RawPlayer): string {
-  // Example: /cards/base/{code}.png
   return `/cards/base/${player.code}.png`;
 }
 
@@ -276,7 +254,7 @@ function pickPlayersForPack(
     result.push({
       ...raw,
       rarity,
-      ...stats
+      ...stats,
     });
   }
 
@@ -316,22 +294,20 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // Reload user for latest coins
       const dbUser = await tx.user.findUnique({
-        where: { id: user.id }
+        where: { id: user.id },
       });
 
       if (!dbUser) {
         throw new Error("User not found.");
       }
 
-      // Starter pack limit: max 2 total per user
       if (def.id === "starter") {
         const openedStarterCount = await tx.packOpen.count({
           where: {
             userId: dbUser.id,
-            packType: "starter"
-          }
+            packType: "starter",
+          },
         });
 
         if (openedStarterCount >= 2) {
@@ -340,7 +316,6 @@ export async function POST(req: NextRequest) {
           );
         }
       } else {
-        // Paid pack: check coins (unlimited as long as you can afford)
         if (dbUser.coins < def.cost) {
           throw new Error(
             "Not enough coins to buy this pack."
@@ -348,42 +323,31 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Deduct coins if needed
       let newCoinBalance = dbUser.coins;
       if (def.cost > 0) {
         newCoinBalance = dbUser.coins - def.cost;
         await tx.user.update({
           where: { id: dbUser.id },
-          data: { coins: newCoinBalance }
+          data: { coins: newCoinBalance },
         });
       }
 
-      // Record pack open
       await tx.packOpen.create({
         data: {
           userId: dbUser.id,
-          packType: def.id
-        }
+          packType: def.id,
+        },
       });
 
-      // Choose players and create UserMonster entries
-      const chosen = pickPlayersForPack(
-        def.size,
-        def.rarityBias
-      );
+      const chosen = pickPlayersForPack(def.size, def.rarityBias);
 
       const createdMonsters = [];
       for (const p of chosen) {
-        // Basic theming defaults: everything is BASE unless overridden later.
         const isLimited = maybeRollLimitedEdition(
           def.limitedEditionChance
         );
 
-        // You can change this later per-set/per-player.
         const setCode = "BASE";
-
-        // For now we don't enforce true "1 of 100", but we already
-        // have fields in place to store that once you add a counter.
         const editionType = isLimited ? "LIMITED" : "BASE";
         const editionLabel = isLimited ? "Limited Edition" : null;
 
@@ -402,23 +366,20 @@ export async function POST(req: NextRequest) {
             baseMagic: p.baseMagic,
             baseDefense: p.baseDefense,
 
-            // NEW: theming + art
             setCode,
             editionType,
             editionLabel: editionLabel ?? undefined,
             artBasePath,
-            // artHoverPath / traitsJson can be filled later via a script/admin tool
-          }
+          },
         });
 
-        // NEW: log monster history — who found it, and from which pack
         await tx.monsterHistoryEvent.create({
           data: {
             userMonsterId: created.id,
             actorUserId: dbUser.id,
             action: "CREATED",
-            description: `Found in ${def.name} pack (${def.id})`
-          }
+            description: `Found in ${def.name} pack (${def.id})`,
+          },
         });
 
         createdMonsters.push(created);
@@ -426,9 +387,12 @@ export async function POST(req: NextRequest) {
 
       return {
         coinsAfter: newCoinBalance,
-        monsters: createdMonsters
+        monsters: createdMonsters,
       };
     });
+
+    // 🔥 Sync all Season 1 objectives (open_packs, collection_size, etc.)
+    await syncObjectivesForUserSeason1(user.id);
 
     return NextResponse.json({
       message: `Opened ${def.name}`,
@@ -446,14 +410,12 @@ export async function POST(req: NextRequest) {
         baseMagic: m.baseMagic,
         baseDefense: m.baseDefense,
         evolutionLevel: m.evolutionLevel,
-        // Expose basic art + edition info to the frontend if you want to plug
-        // directly into MonsterCard.artUrl / editionLabel now:
         artBasePath: m.artBasePath,
         setCode: m.setCode,
         editionType: m.editionType,
         editionLabel: m.editionLabel,
-        serialNumber: m.serialNumber
-      }))
+        serialNumber: m.serialNumber,
+      })),
     });
   } catch (err: any) {
     console.error("Error opening pack:", err);

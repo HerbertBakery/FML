@@ -187,7 +187,10 @@ const MonsterRevealCard: React.FC<{ monster: OpenedMonster; delay?: number }> = 
         damping: 14,
         delay,
       }}
-      className={`relative w-56 h-80 rounded-2xl p-3 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 ring-2 ${style.ring} shadow-xl ${style.glow}`}
+      className={`relative w-60 sm:w-64 h-80 sm:h-96 rounded-2xl p-3 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 ring-2 ${style.ring} shadow-xl ${style.glow}`}
+      style={{
+        transformStyle: "preserve-3d",
+      }}
     >
       <div
         className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-xs font-semibold ${style.label}`}
@@ -198,15 +201,24 @@ const MonsterRevealCard: React.FC<{ monster: OpenedMonster; delay?: number }> = 
         {monster.position} • {monster.club}
       </div>
 
-      {/* IMAGE AREA – use same art URL logic as marketplace */}
-      <div className="mt-6 mb-3 relative w-full h-32 overflow-hidden rounded-lg">
-        <img src={artUrl} alt={monster.displayName} className="w-full h-full object-cover" />
+      {/* IMAGE AREA – enlarged to fill most of the card and spin with the card */}
+      <div className="mt-6 mb-3 relative w-full h-44 sm:h-56 overflow-hidden rounded-xl">
+        <motion.img
+          src={artUrl}
+          alt={monster.displayName}
+          className="w-full h-full object-cover"
+          style={{
+            backfaceVisibility: "hidden",
+            transformStyle: "preserve-3d",
+          }}
+        />
       </div>
 
-      <div className="flex h-full items-center justify-center">
+      {/* TEXT / STATS */}
+      <div className="flex flex-col items-center justify-start">
         <div className="text-center">
           <div
-            className="text-lg font-semibold tracking-wide text-emerald-200 drop-shadow"
+            className="text-lg sm:text-xl font-semibold tracking-wide text-emerald-200 drop-shadow"
             style={{
               textShadow: "0 1px 8px rgba(16,185,129,0.35)",
             }}

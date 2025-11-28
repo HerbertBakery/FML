@@ -221,7 +221,7 @@ export default function MonsterDetailModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={handleBackdropClick}
     >
-      <div className="max-h-[90vh] w-full max-w-lg overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
           <h2 className="text-sm font-semibold text-slate-100">
@@ -257,69 +257,74 @@ export default function MonsterDetailModal({
           {!loading && !error && monster && (
             <>
               {/* Top card with core info */}
-              <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-3 space-y-2">
-                {/* NEW: Card image */}
-                <div className="w-24 aspect-[3/4] overflow-hidden rounded-lg border border-slate-700 bg-slate-900/60 mx-auto mb-1">
-                  <img
-                    src={getArtUrlForMonster(monster)}
-                    alt={monster.displayName}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-100">
-                      {monster.displayName}
-                    </p>
-                    <p className="text-[11px] text-slate-300">
-                      {monster.realPlayerName} • {monster.club}
-                    </p>
+              <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-3 space-y-3">
+                <div className="flex flex-col md:flex-row md:items-start md:gap-4">
+                  {/* BIG Card image */}
+                  <div className="flex-shrink-0 w-40 sm:w-48 md:w-56 aspect-[3/4] overflow-hidden rounded-lg border border-slate-700 bg-slate-900/60 mx-auto md:mx-0 mb-2 md:mb-0">
+                    <img
+                      src={getArtUrlForMonster(monster)}
+                      alt={monster.displayName}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
-                  <span className="text-[10px] uppercase font-semibold text-emerald-300">
-                    {monster.rarity}
-                  </span>
+
+                  {/* Text / stats */}
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-100">
+                          {monster.displayName}
+                        </p>
+                        <p className="text-[11px] text-slate-300">
+                          {monster.realPlayerName} • {monster.club}
+                        </p>
+                      </div>
+                      <span className="text-[10px] uppercase font-semibold text-emerald-300">
+                        {monster.rarity}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400">
+                      {monster.position} • ATK {monster.baseAttack} • MAG{" "}
+                      {monster.baseMagic} • DEF {monster.baseDefense}
+                    </p>
+
+                    <p className="text-[10px] text-emerald-300">
+                      Evo Lv. {monster.evolutionLevel}
+                    </p>
+
+                    {(monster.totalGoals ||
+                      monster.totalAssists ||
+                      monster.totalCleanSheets ||
+                      monster.totalFantasyPoints) && (
+                      <p className="mt-1 text-[11px] text-slate-300">
+                        GW stats:{" "}
+                        <span className="text-emerald-300">
+                          {monster.totalGoals ?? 0} G •{" "}
+                          {monster.totalAssists ?? 0} A •{" "}
+                          {monster.totalCleanSheets ?? 0} CS •{" "}
+                          {monster.totalFantasyPoints ?? 0} PTS
+                        </span>
+                      </p>
+                    )}
+
+                    {(monster.ownerEmail || monster.ownerUsername) && (
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        Current owner:{" "}
+                        <span className="font-mono text-slate-200">
+                          {monster.ownerUsername || monster.ownerEmail}
+                        </span>
+                      </p>
+                    )}
+
+                    {monster.isConsumed && (
+                      <p className="mt-1 text-[10px] text-amber-300">
+                        This monster has been consumed in an SBC /
+                        special action and is no longer active.
+                      </p>
+                    )}
+                  </div>
                 </div>
-
-                <p className="text-[11px] text-slate-400 mt-1">
-                  {monster.position} • ATK {monster.baseAttack} • MAG{" "}
-                  {monster.baseMagic} • DEF {monster.baseDefense}
-                </p>
-
-                <p className="text-[10px] text-emerald-300 mt-1">
-                  Evo Lv. {monster.evolutionLevel}
-                </p>
-
-                {(monster.totalGoals ||
-                  monster.totalAssists ||
-                  monster.totalCleanSheets ||
-                  monster.totalFantasyPoints) && (
-                  <p className="mt-2 text-[11px] text-slate-300">
-                    GW stats:{" "}
-                    <span className="text-emerald-300">
-                      {monster.totalGoals ?? 0} G •{" "}
-                      {monster.totalAssists ?? 0} A •{" "}
-                      {monster.totalCleanSheets ?? 0} CS •{" "}
-                      {monster.totalFantasyPoints ?? 0} PTS
-                    </span>
-                  </p>
-                )}
-
-                {(monster.ownerEmail || monster.ownerUsername) && (
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Current owner:{" "}
-                    <span className="font-mono text-slate-200">
-                      {monster.ownerUsername || monster.ownerEmail}
-                    </span>
-                  </p>
-                )}
-
-                {monster.isConsumed && (
-                  <p className="mt-1 text-[10px] text-amber-300">
-                    This monster has been consumed in an SBC /
-                    special action and is no longer active.
-                  </p>
-                )}
               </div>
 
               {/* History timeline */}

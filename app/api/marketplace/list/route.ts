@@ -1,7 +1,7 @@
-// app/api/marketplace/list/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
+import { recordObjectiveProgress } from "@/lib/objectives/engine";
 
 export const runtime = "nodejs";
 
@@ -30,8 +30,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const userMonsterId = body.userMonsterId;
-  const price = body.price ?? 0;
+  const { userMonsterId, price } = body;
 
   if (!userMonsterId) {
     return NextResponse.json(
@@ -40,78 +39,109 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!Number.isFinite(price) || price <= 0) {
+  if (price == null || Number.isNaN(price) || price <= 0) {
     return NextResponse.json(
-      { error: "Price must be a positive number." },
+      { error: "A positive price is required." },
       { status: 400 }
     );
   }
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const monster = await tx.userMonster.findFirst({
-        where: {
-          id: userMonsterId,
-          userId: user.id,
-          isConsumed: false,
-        },
+      // 1) Load the monster and verify ownership
+      const monster = await tx.userMonster.findUnique({
+        where: { id: userMonsterId },
       });
 
       if (!monster) {
-        throw new Error(
-          "You do not own this monster, it does not exist, or it has been consumed."
-        );
+        throw new Error("Monster not found.");
       }
 
-      const existing = await tx.marketListing.findFirst({
+      if (monster.userId !== user.id) {
+        throw new Error("You do not own this monster.");
+      }
+
+      if (monster.isConsumed) {
+        throw new Error("This monster has been consumed and cannot be listed.");
+      }
+
+      // 2) Ensure there's no active listing for this monster
+      const existingActiveListing = await tx.marketListing.findFirst({
         where: {
-          userMonsterId,
+          userMonsterId: monster.id,
           isActive: true,
         },
       });
 
-      if (existing) {
-        throw new Error(
-          "This monster is already listed for sale."
-        );
+      if (existingActiveListing) {
+        throw new Error("This monster is already listed for sale.");
       }
 
+      // 3) Create new listing
       const listing = await tx.marketListing.create({
         data: {
           sellerId: user.id,
-          userMonsterId,
-          price,
+          userMonsterId: monster.id,
+          price: Math.floor(price),
           isActive: true,
         },
       });
 
-      // 🔹 History: LISTED
+      // 4) Remove this monster from ALL of the user's saved squads
+      // (so it disappears from "My Squads" once listed)
+      await tx.squadMonster.deleteMany({
+        where: {
+          userMonsterId: monster.id,
+          squad: {
+            userId: user.id,
+          },
+        },
+      });
+
+      // 5) Log history event
       await tx.monsterHistoryEvent.create({
         data: {
           userMonsterId: monster.id,
           actorUserId: user.id,
           action: "LISTED",
-          description: `Listed for ${price} coins on the marketplace.`,
+          description: `Listed on marketplace for ${listing.price} coins.`,
         },
       });
 
-      return listing;
+      // 6) Objectives: selling counts for SELL + combined MARKET transactions
+      await recordObjectiveProgress({
+        prisma: tx,
+        userId: user.id,
+        type: "USE_MARKETPLACE_SELL",
+        amount: 1,
+      });
+
+      // MARKET_03 uses USE_MARKETPLACE_BUY as "total market transactions" in your config
+      await recordObjectiveProgress({
+        prisma: tx,
+        userId: user.id,
+        type: "USE_MARKETPLACE_BUY",
+        amount: 1,
+      });
+
+      return {
+        listingId: listing.id,
+        price: listing.price,
+      };
     });
 
-    return NextResponse.json(
-      {
-        id: result.id,
-        price: result.price,
-      },
-      { status: 201 }
-    );
+    return NextResponse.json({
+      ok: true,
+      message: "Monster listed on the marketplace.",
+      ...result,
+    });
   } catch (err: any) {
     console.error("Error listing monster:", err);
     return NextResponse.json(
       {
         error:
           err?.message ||
-          "Failed to list monster for sale.",
+          "Failed to list monster.",
       },
       { status: 400 }
     );

@@ -1,7 +1,7 @@
 // components/HeaderAuth.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -21,34 +21,70 @@ export default function HeaderAuth() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  const fetchMe = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me", {
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        setUser(null);
+        return;
+      }
+
+      const data = (await res.json()) as MeResponse;
+      setUser(data.user ?? null);
+    } catch {
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
-      try {
-        const res = await fetch("/api/auth/me", {
-          credentials: "include",
-        });
-        if (!res.ok) {
-          if (!cancelled) setUser(null);
-          return;
-        }
-        const data = (await res.json()) as MeResponse;
-        if (!cancelled) {
-          setUser(data.user ?? null);
-        }
-      } catch {
-        if (!cancelled) setUser(null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
+    (async () => {
+      if (cancelled) return;
+      await fetchMe();
+    })();
 
-    load();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fetchMe]);
+
+  // Auto-refresh coins:
+  // - every 5 seconds
+  // - whenever the window regains focus
+  // - whenever tab visibility changes back to visible
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const handleFocus = () => {
+      void fetchMe();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void fetchMe();
+      }
+    };
+
+    // Poll every 5 seconds (tweak if you want more/less frequent)
+    intervalId = setInterval(() => {
+      void fetchMe();
+    }, 5000);
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [fetchMe]);
 
   async function handleLogout() {
     try {
@@ -60,7 +96,6 @@ export default function HeaderAuth() {
       // ignore
     }
 
-    // Optimistically clear client state and hard refresh
     setUser(null);
     router.push("/");
     router.refresh();
@@ -87,11 +122,25 @@ export default function HeaderAuth() {
     );
   }
 
+  const displayName = user.username || user.email;
+
   return (
     <div className="flex items-center gap-2 text-[11px]">
+      {/* Live coins pill */}
+      <div className="flex items-center gap-1 rounded-full border border-emerald-500/60 bg-slate-900/80 px-3 py-1 shadow-[0_0_12px_rgba(16,185,129,0.35)]">
+        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/90 text-[9px] font-bold text-slate-950">
+          ₵
+        </span>
+        <span className="text-[11px] font-semibold text-emerald-300 tabular-nums">
+          {user.coins.toLocaleString()}
+        </span>
+      </div>
+
+      {/* Username / email */}
       <span className="max-w-[140px] truncate text-slate-200">
-        {user.username || user.email}
+        {displayName}
       </span>
+
       <button
         type="button"
         onClick={handleLogout}

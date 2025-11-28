@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
+import { recordObjectiveProgress } from "@/lib/objectives/engine";
 
 export const runtime = "nodejs";
 
@@ -53,9 +54,7 @@ export async function POST(req: NextRequest) {
 
       // ✅ Prevent buying your own listing
       if (listing.sellerId === user.id) {
-        throw new Error(
-          "You cannot buy your own listing."
-        );
+        throw new Error("You cannot buy your own listing.");
       }
 
       const buyer = await tx.user.findUnique({
@@ -121,7 +120,9 @@ export async function POST(req: NextRequest) {
           userMonsterId: listing.userMonsterId,
           actorUserId: listing.sellerId,
           action: "SOLD",
-          description: `Sold for ${listing.price} coins to ${buyer.email || "another manager"}.`,
+          description: `Sold for ${listing.price} coins to ${
+            buyer.email || "another manager"
+          }.`,
         },
       });
 
@@ -131,8 +132,33 @@ export async function POST(req: NextRequest) {
           userMonsterId: listing.userMonsterId,
           actorUserId: buyer.id,
           action: "BOUGHT",
-          description: `Bought for ${listing.price} coins from ${listing.seller.email || "another manager"}.`,
+          description: `Bought for ${listing.price} coins from ${
+            listing.seller.email || "another manager"
+          }.`,
         },
+      });
+
+      // 🔥 OBJECTIVES: Marketplace path
+      // - MARKET_01 & MARKET_03: buyer progress on USE_MARKETPLACE_BUY
+      await recordObjectiveProgress({
+        prisma: tx,
+        userId: buyer.id,
+        type: "USE_MARKETPLACE_BUY",
+        amount: 1,
+      });
+
+      // - MARKET_02 & MARKET_03: seller gets SELL and total-transactions progress
+      await recordObjectiveProgress({
+        prisma: tx,
+        userId: listing.sellerId,
+        type: "USE_MARKETPLACE_SELL",
+        amount: 1,
+      });
+      await recordObjectiveProgress({
+        prisma: tx,
+        userId: listing.sellerId,
+        type: "USE_MARKETPLACE_BUY",
+        amount: 1,
       });
 
       return {

@@ -109,6 +109,70 @@ function pickRandom(list) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+// ---------- Monster species / creature types for variety ----------
+const SPECIES_TYPES = [
+  "shadow goblin",
+  "feral goblin raider",
+  "armoured goblin bruiser",
+  "towering stone golem",
+  "cracked crystal golem",
+  "runic obsidian golem",
+  "fiery demon striker",
+  "smoke-wreathed shadow demon",
+  "hornless ember demon",
+  "sleek panther beast",
+  "saber-tooth cat warrior",
+  "striped tiger beastman",
+  "wolf-headed beastman",
+  "frost wolf champion",
+  "lone wolf stalker",
+  "raptor-lizard warrior",
+  "armoured crocodile brute",
+  "serpentine naga playmaker",
+  "feathered eagle knight",
+  "hawk-headed sky guardian",
+  "raven trickster spirit",
+  "ancient tree guardian",
+  "thorned plant beast",
+  "vined treant striker",
+  "slime blob bruiser",
+  "crystalline slime mage",
+  "amorphous gel guardian",
+  "floating wraith spectre",
+  "hooded shadow spirit",
+  "glowing astral phantom",
+  "sleek cyber mech",
+  "bulky mech titan",
+  "hovering drone-bodied mech",
+  "lava elemental titan",
+  "storm-cloud elemental",
+  "shimmering water elemental",
+  "armoured minotaur",
+  "bull-horned arena beast",
+  "rhino-headed tank",
+  "armoured beetle warrior",
+  "mantis-blade assassin",
+  "scarab-backed defender",
+  "ice dragon hatchling",
+  "storm drake striker",
+  "serpentine dragon spirit",
+  "fox spirit trickster",
+  "nine-tailed fox mage",
+  "masked kitsune playmaker",
+  "rock-armoured turtle guardian",
+  "spiked armadillo roller",
+  "armoured pangolin tackler",
+  "jackal-headed guardian",
+  "crocodile-headed enforcer",
+  "lion-headed champion",
+  "cracked porcelain doll golem",
+  "clockwork automaton",
+  "steam-powered mech beast",
+  "living bronze statue",
+  "runic stone idol",
+  "animated armour knight"
+];
+
 // ---------- Helper: position archetype with special overrides ----------
 function getPositionArchetype(player) {
   const codeKey = String(player.code || player.fplId || "");
@@ -168,6 +232,7 @@ function buildPrompt(player) {
 
   const teamPalette = getTeamPalette(teamShort, teamName);
   const archetype = getPositionArchetype(player);
+  const speciesType = pickRandom(SPECIES_TYPES);
 
   return `
 Create an appealing, stylish fantasy monster football character illustration for trading-card art.
@@ -183,9 +248,12 @@ The creature:
 
 Creature variety:
 - Across the collection, creatures should come from many species:
-  dragons, reptiles, big cats, wolves, birds, golems, robots, spirits, slime creatures, plant beasts, etc.
-- For this monster, pick whichever creature type best matches the role and vibe,
-  and make sure its silhouette is distinct (different head shape, limbs, posture) from a generic horned demon.
+  goblins, demons, dragons, reptiles, big cats, wolves, birds, golems, robots, spirits, slime creatures,
+  plant beasts, insects, serpents, minotaurs, elementals, beastmen, wraiths, mechs, animated armour, etc.
+- For this monster, its specific creature species/type is: ${speciesType}.
+  Design the anatomy, textures, and silhouette so it clearly feels like this type of monster,
+  while still matching a ${position} football role and loosely echoing ${realName}'s playing style and vibe.
+- Make sure its silhouette is distinct (different head shape, limbs, posture) from a generic horned demon.
 - Do NOT default to big curved horns on every design. Many monsters should have no horns;
   instead use crests, fins, plates, mechanical parts, glowing masks, or other shapes.
 
@@ -297,7 +365,7 @@ async function main() {
   console.log(`Output directory: ${OUTPUT_DIR}`);
 
   // While testing, just do a few to check style & quality:
-const subset = players.slice(11); // start at the 12th monster
+  const subset = players.slice(11); // start at the 12th monster
   // const subset = players; // full run once you're happy
 
   const total = subset.length;

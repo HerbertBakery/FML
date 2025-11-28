@@ -43,11 +43,17 @@ model User {
   // NEW: objectives progress
   objectiveProgresses       ObjectiveProgress[]
 
+  // NEW: objective set progress (paths)
+  objectiveSetProgresses    UserObjectiveSetProgress[]
+
   // NEW: daily streak (one row per user)
   dailyStreak               DailyStreak?
 
   // NEW: acts as "actor" in monster history (who found/evolved/sold/etc)
   monsterHistoryEvents      MonsterHistoryEvent[] @relation("MonsterHistoryActor")
+
+  // NEW: reward packs earned from objectives / paths / SBCs
+  rewardPacks               RewardPack[]
 }
 
 model UserMonster {
@@ -302,6 +308,13 @@ model ObjectiveTemplate {
   period      String
   // Type: e.g. "open_packs", "score_points", "win_gameweeks"
   type        String
+
+  // NEW: grouping & display
+  category    String?
+  seasonCode  String?
+  sortOrder   Int                 @default(0)
+  isRepeatable Boolean            @default(false)
+
   targetValue Int                 @default(1)
   // Reward: same convention as SBCs
   rewardType  String              // "coins" | "pack" | "special"
@@ -310,6 +323,7 @@ model ObjectiveTemplate {
   createdAt   DateTime            @default(now())
 
   progresses  ObjectiveProgress[]
+  sets        ObjectiveSetObjective[]
 }
 
 // Per-user progress towards a given objective
@@ -323,7 +337,54 @@ model ObjectiveProgress {
   completedAt   DateTime?
   lastUpdatedAt DateTime          @default(now())
 
+  // NEW: reward claimed (click-to-claim)
+  rewardClaimedAt DateTime?
+
   @@unique([userId, objectiveId])
+}
+
+///////////////////////////////////////////////////////////
+// NEW: Objective sets / paths
+///////////////////////////////////////////////////////////
+
+model ObjectiveSet {
+  id            String                   @id @default(cuid())
+  code          String                   @unique
+  title         String
+  description   String
+  seasonCode    String?
+  sortOrder     Int                      @default(0)
+  rewardType    String                   // "coins" | "pack" | "special"
+  rewardValue   String
+  isActive      Boolean                  @default(true)
+  createdAt     DateTime                 @default(now())
+
+  objectives    ObjectiveSetObjective[]
+  userProgresses UserObjectiveSetProgress[]
+}
+
+model ObjectiveSetObjective {
+  id             String           @id @default(cuid())
+  objectiveSet   ObjectiveSet     @relation(fields: [objectiveSetId], references: [id])
+  objectiveSetId String
+  objective      ObjectiveTemplate @relation(fields: [objectiveId], references: [id])
+  objectiveId    String
+}
+
+model UserObjectiveSetProgress {
+  id             String        @id @default(cuid())
+  user           User          @relation(fields: [userId], references: [id])
+  userId         String
+  objectiveSet   ObjectiveSet  @relation(fields: [objectiveSetId], references: [id])
+  objectiveSetId String
+  isCompleted    Boolean       @default(false)
+  completedAt    DateTime?
+  createdAt      DateTime      @default(now())
+
+  // NEW: set reward claimed (click-to-claim)
+  rewardClaimedAt DateTime?
+
+  @@unique([userId, objectiveSetId])
 }
 
 ///////////////////////////////////////////////////////////
@@ -361,4 +422,19 @@ model MonsterHistoryEvent {
   description   String
 
   createdAt     DateTime    @default(now())
+}
+
+///////////////////////////////////////////////////////////
+// NEW: Reward packs (earned from objectives / sets / SBC)
+///////////////////////////////////////////////////////////
+
+model RewardPack {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  packId     String   // "starter" | "bronze" | "silver" | "gold" etc.
+  sourceType String   // "objective" | "objective_set" | "sbc" | "daily_streak" | etc.
+  sourceRef  String?  // e.g. objective code or set code
+  isOpened   Boolean  @default(false)
+  createdAt  DateTime @default(now())
 }

@@ -34,6 +34,18 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Find all monsters THIS user has actively listed
+  const activeListings = await prisma.marketListing.findMany({
+    where: {
+      sellerId: user.id,
+      isActive: true,
+    },
+    select: {
+      userMonsterId: true,
+    },
+  });
+  const listedIds = activeListings.map((l) => l.userMonsterId);
+
   const squad = await prisma.squad.findFirst({
     where: { userId: user.id },
     orderBy: { createdAt: "desc" },
@@ -49,7 +61,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ squad: null });
   }
 
-  const monsters = squad.slots.map((slot) => ({
+  // Filter out any squad slots whose monster is currently listed
+  const filteredSlots =
+    listedIds.length === 0
+      ? squad.slots
+      : squad.slots.filter(
+          (slot) => !listedIds.includes(slot.userMonsterId)
+        );
+
+  const monsters = filteredSlots.map((slot) => ({
     id: slot.userMonster.id,
     templateCode: slot.userMonster.templateCode,
     displayName: slot.userMonster.displayName,
@@ -62,7 +82,7 @@ export async function GET(req: NextRequest) {
     baseDefense: slot.userMonster.baseDefense,
     evolutionLevel: slot.userMonster.evolutionLevel,
 
-    // NEW: edition + art to mirror collection / marketplace
+    // edition + art to mirror collection / marketplace
     setCode: slot.userMonster.setCode ?? null,
     editionType: slot.userMonster.editionType ?? null,
     serialNumber: slot.userMonster.serialNumber ?? null,
@@ -106,6 +126,27 @@ export async function POST(req: NextRequest) {
   if (uniqueIds.length !== maxPlayers) {
     return NextResponse.json(
       { error: "You must select exactly 6 monsters." },
+      { status: 400 }
+    );
+  }
+
+  // Safety: ensure none of the selected monsters are currently listed
+  const activeListingsForSelection = await prisma.marketListing.findMany({
+    where: {
+      isActive: true,
+      userMonsterId: {
+        in: uniqueIds,
+      },
+    },
+    select: { userMonsterId: true },
+  });
+
+  if (activeListingsForSelection.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "One or more selected monsters are currently listed on the marketplace and cannot be used in a squad.",
+      },
       { status: 400 }
     );
   }

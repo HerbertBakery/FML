@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { getOrCreateCurrentGameweek } from "@/lib/gameweeks";
+import { recordObjectiveProgress } from "@/lib/objectives/engine";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,7 @@ function positionsSummary(monsters: { position: string }[]) {
     GK: 0,
     DEF: 0,
     MID: 0,
-    FWD: 0
+    FWD: 0,
   };
   for (const m of monsters) {
     if (counts[m.position] !== undefined) {
@@ -41,7 +42,10 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   if (now > gameweek.deadlineAt) {
     return NextResponse.json(
-      { error: "Deadline has passed for the current gameweek." },
+      {
+        error:
+          "Deadline has passed for the current gameweek.",
+      },
       { status: 400 }
     );
   }
@@ -70,8 +74,8 @@ export async function POST(req: NextRequest) {
   const monsters = await prisma.userMonster.findMany({
     where: {
       id: { in: uniqueIds },
-      userId: user.id
-    }
+      userId: user.id,
+    },
   });
 
   if (monsters.length !== uniqueIds.length) {
@@ -83,11 +87,16 @@ export async function POST(req: NextRequest) {
 
   const counts = positionsSummary(monsters);
 
-  if (counts.GK !== 1 || counts.DEF < 1 || counts.MID < 1 || counts.FWD < 1) {
+  if (
+    counts.GK !== 1 ||
+    counts.DEF < 1 ||
+    counts.MID < 1 ||
+    counts.FWD < 1
+  ) {
     return NextResponse.json(
       {
         error:
-          "Your gameweek squad must contain exactly 1 GK and at least 1 DEF, 1 MID, and 1 FWD."
+          "Your gameweek squad must contain exactly 1 GK and at least 1 DEF, 1 MID, and 1 FWD.",
       },
       { status: 400 }
     );
@@ -100,24 +109,25 @@ export async function POST(req: NextRequest) {
     const existingEntry = await tx.gameweekEntry.findFirst({
       where: {
         userId: user.id,
-        gameweekId: gameweek.id
+        gameweekId: gameweek.id,
       },
-      select: { id: true }
+      select: { id: true },
     });
 
+    const isNewEntry = !existingEntry;
     let entryId: string;
 
     if (existingEntry) {
       entryId = existingEntry.id;
       await tx.gameweekEntryMonster.deleteMany({
-        where: { entryId }
+        where: { entryId },
       });
     } else {
       const created = await tx.gameweekEntry.create({
         data: {
           userId: user.id,
-          gameweekId: gameweek.id
-        }
+          gameweekId: gameweek.id,
+        },
       });
       entryId = created.id;
     }
@@ -127,25 +137,37 @@ export async function POST(req: NextRequest) {
         entryId,
         userMonsterId: monsterId,
         slot: index,
-        isSub: index >= 4 // first 4 = starters, last 2 = subs
-      }))
+        isSub: index >= 4, // first 4 = starters, last 2 = subs
+      })),
     });
 
     // Ensure a score record exists (0 points initially)
-    const existingScore = await tx.userGameweekScore.findFirst({
-      where: {
-        userId: user.id,
-        gameweekId: gameweek.id
-      }
-    });
+    const existingScore =
+      await tx.userGameweekScore.findFirst({
+        where: {
+          userId: user.id,
+          gameweekId: gameweek.id,
+        },
+      });
 
     if (!existingScore) {
       await tx.userGameweekScore.create({
         data: {
           userId: user.id,
           gameweekId: gameweek.id,
-          points: 0
-        }
+          points: 0,
+        },
+      });
+    }
+
+    // 🔥 OBJECTIVES: submitting fantasy squads
+    // Only count the *first* time you submit an entry for a gameweek.
+    if (isNewEntry) {
+      await recordObjectiveProgress({
+        prisma: tx,
+        userId: user.id,
+        type: "SUBMIT_FANTASY_SQUAD",
+        amount: 1,
       });
     }
 
@@ -154,9 +176,9 @@ export async function POST(req: NextRequest) {
       include: {
         monsters: {
           include: { userMonster: true },
-          orderBy: { slot: "asc" }
-        }
-      }
+          orderBy: { slot: "asc" },
+        },
+      },
     });
   });
 
@@ -181,8 +203,8 @@ export async function POST(req: NextRequest) {
         baseAttack: m.userMonster.baseAttack,
         baseMagic: m.userMonster.baseMagic,
         baseDefense: m.userMonster.baseDefense,
-        isSub: m.isSub
-      }))
-    }
+        isSub: m.isSub,
+      })),
+    },
   });
 }
