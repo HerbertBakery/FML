@@ -692,20 +692,6 @@ export default function HomePage() {
             </Link>
           </div>
         </section>
-
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-400">
-          <p>
-            Need to update scores or test new
-            gameweeks? Use the{" "}
-            <Link
-              href="/admin/tools"
-              className="underline underline-offset-2"
-            >
-              Admin Tools
-            </Link>{" "}
-            page to trigger FPL scoring and evolution.
-          </p>
-        </section>
       </main>
 
       {/* Starter pack modal */}

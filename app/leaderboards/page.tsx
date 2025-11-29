@@ -238,7 +238,7 @@ export default function LeaderboardsPage() {
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-1">
               <div className="text-xs text-slate-300">
                 {data.mode === "gameweek" && data.gameweek ? (
                   <>
@@ -256,6 +256,10 @@ export default function LeaderboardsPage() {
                 Top {data.entries.length} managers
               </div>
             </div>
+            <p className="mb-3 text-[11px] text-slate-500">
+              Tip: click a manager to view their gameweek pitch and full points
+              history.
+            </p>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
@@ -275,16 +279,19 @@ export default function LeaderboardsPage() {
                       <tr
                         key={entry.userId}
                         className={`border-b border-slate-800 last:border-b-0 ${
-                          isMe ? "bg-emerald-500/10" : ""
+                          isMe ? "bg-emerald-500/10" : "hover:bg-slate-800/60"
                         }`}
                       >
                         <td className="py-2 pr-4 text-slate-400">
                           #{index + 1}
                         </td>
                         <td className="py-2 pr-4">
-                          <span className="text-slate-100">
+                          <Link
+                            href={`/managers/${entry.userId}`}
+                            className="text-slate-100 hover:text-emerald-300 underline underline-offset-2"
+                          >
                             {entry.email}
-                          </span>
+                          </Link>
                           {isMe && (
                             <span className="ml-2 text-[10px] text-emerald-300">
                               (You)
@@ -365,8 +372,7 @@ export default function LeaderboardsPage() {
                     {league.isOwner ? "You" : league.ownerEmail}
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Members: {league.memberCount} • Your rank:{" "}
-                    {league.myRank ? `#${league.myRank}` : "— (no scores yet)"}
+                    Members: {league.myRank ? `#${league.myRank}` : "— (no scores yet)"}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">

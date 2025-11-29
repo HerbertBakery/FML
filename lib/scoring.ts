@@ -124,7 +124,7 @@ async function fetchFplGameweekLiveWithCode(
       goals: el.stats.goals_scored ?? 0,
       assists: el.stats.assists ?? 0,
       cleanSheets: el.stats.clean_sheets ?? 0,
-      totalPoints: el.stats.total_points ?? 0
+      totalPoints: el.stats.total_points ?? 0,
     };
   });
 }
@@ -138,22 +138,21 @@ async function fetchFplGameweekLiveWithCode(
  *  1. Ensure Gameweek row exists (create if missing).
  *  2. Fetch FPL stats (live + bootstrap mapping).
  *  3. Build a map from FPL "code" -> performance.
- *  4. Find UserMonsters whose templateCode matches that code.
- *  5. Update monster career totals.
- *  6. Aggregate and upsert UserGameweekScore per user.
+ *  4. For this gameweek, find all GameweekEntry rows + their 6 monsters.
+ *  5. For each entry, compute per-monster GW points and per-user total.
+ *  6. Update monster career totals and GameweekEntryMonster.points.
+ *  7. Upsert UserGameweekScore per user (sum of their 6 selected monsters).
  */
 export async function applyGameweekPerformances(
   gameweekNumber: number
 ): Promise<void> {
   if (!Number.isInteger(gameweekNumber) || gameweekNumber <= 0) {
-    throw new Error(
-      `Invalid gameweekNumber: ${gameweekNumber}`
-    );
+    throw new Error(`Invalid gameweekNumber: ${gameweekNumber}`);
   }
 
   // 1) Ensure Gameweek exists in our DB
   let gw = await prisma.gameweek.findFirst({
-    where: { number: gameweekNumber }
+    where: { number: gameweekNumber },
   });
 
   if (!gw) {
@@ -164,20 +163,16 @@ export async function applyGameweekPerformances(
         name: `Gameweek ${gameweekNumber}`,
         // This date is just metadata for FML; scoring is keyed by gameweekNumber.
         deadlineAt: new Date(),
-        isActive: true
-      }
+        isActive: true,
+      },
     });
   }
 
   // 2) Fetch FPL stats (with code)
-  const performances = await fetchFplGameweekLiveWithCode(
-    gameweekNumber
-  );
+  const performances = await fetchFplGameweekLiveWithCode(gameweekNumber);
 
   if (performances.length === 0) {
-    console.warn(
-      `No FPL performances found for gameweek ${gameweekNumber}.`
-    );
+    console.warn(`No FPL performances found for gameweek ${gameweekNumber}.`);
     return;
   }
 
@@ -195,78 +190,98 @@ export async function applyGameweekPerformances(
     return;
   }
 
-  const matchingTemplateCodes = Array.from(perfByCode.keys());
-
-  // 4) Find all UserMonsters whose templateCode matches any of those codes.
-  const monsters = await prisma.userMonster.findMany({
+  // 4) Load all locked entries for this gameweek, each with its 6 monsters
+  const entries = await prisma.gameweekEntry.findMany({
     where: {
-      templateCode: {
-        in: matchingTemplateCodes
-      }
-    }
+      gameweekId: gw.id,
+    },
+    include: {
+      monsters: {
+        include: {
+          userMonster: true,
+        },
+        orderBy: {
+          slot: "asc",
+        },
+      },
+    },
   });
 
-  if (monsters.length === 0) {
+  if (entries.length === 0) {
     console.warn(
-      `No UserMonster entries matched FPL codes for gameweek ${gameweekNumber}.`
+      `No GameweekEntry rows found for gameweek ${gameweekNumber}.`
     );
     return;
   }
 
-  // 5) Update monster totals & aggregate per-user gameweek totals
-  const userTotals = new Map<string, number>();
+  // 5 & 6) For each entry, compute monster GW points and user total
+  const userTotals = new Map<string, number>(); // userId -> total GW points
 
-  for (const monster of monsters) {
-    const perf = perfByCode.get(monster.templateCode);
-    if (!perf) continue;
+  for (const entry of entries) {
+    let entryTotal = 0;
 
-    // Update career totals
-    await prisma.userMonster.update({
-      where: { id: monster.id },
-      data: {
-        totalGoals: {
-          increment: perf.goals
-        },
-        totalAssists: {
-          increment: perf.assists
-        },
-        totalCleanSheets: {
-          increment: perf.cleanSheets
-        },
-        totalFantasyPoints: {
-          increment: perf.totalPoints
-        }
+    for (const em of entry.monsters) {
+      const monster = em.userMonster;
+      const perf = perfByCode.get(monster.templateCode);
+      const points = perf?.totalPoints ?? 0;
+
+      // Update career totals only if we have perf data
+      if (perf) {
+        await prisma.userMonster.update({
+          where: { id: monster.id },
+          data: {
+            totalGoals: {
+              increment: perf.goals,
+            },
+            totalAssists: {
+              increment: perf.assists,
+            },
+            totalCleanSheets: {
+              increment: perf.cleanSheets,
+            },
+            totalFantasyPoints: {
+              increment: perf.totalPoints,
+            },
+          },
+        });
       }
-    });
 
-    // Aggregate per-user gameweek total
-    const prev = userTotals.get(monster.userId) ?? 0;
-    userTotals.set(monster.userId, prev + perf.totalPoints);
+      // Store per-monster GW points on the entry record
+      await prisma.gameweekEntryMonster.update({
+        where: { id: em.id },
+        data: { points },
+      });
+
+      entryTotal += points;
+    }
+
+    const prev = userTotals.get(entry.userId) ?? 0;
+    userTotals.set(entry.userId, prev + entryTotal);
   }
 
-  // 6) Upsert UserGameweekScore per user
-  const entries = Array.from(userTotals.entries()); // [userId, points]
+  // 7) Upsert UserGameweekScore per user (sum of *their 6 locked monsters*)
+  const entriesArray = Array.from(userTotals.entries()); // [userId, points]
 
-  for (const [userId, points] of entries) {
+  for (const [userId, points] of entriesArray) {
     await prisma.userGameweekScore.upsert({
       where: {
         userId_gameweekId: {
           userId,
-          gameweekId: gw.id
-        }
+          gameweekId: gw.id,
+        },
       },
       update: {
-        points
+        points,
       },
       create: {
         userId,
         gameweekId: gw.id,
-        points
-      }
+        points,
+      },
     });
   }
 
   console.log(
-    `Scored gameweek ${gameweekNumber} for ${entries.length} users.`
+    `Scored gameweek ${gameweekNumber} for ${entriesArray.length} users (6 locked monsters each).`
   );
 }

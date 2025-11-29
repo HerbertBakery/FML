@@ -166,6 +166,9 @@ model GameweekEntryMonster {
   userMonsterId String
   slot          Int
   isSub         Boolean       @default(false)
+
+  // NEW: points scored by this monster in this specific gameweek
+  points        Int           @default(0)
 }
 
 // Total points for a user in a given gameweek (for leaderboards)
