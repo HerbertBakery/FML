@@ -23,7 +23,7 @@ type UserMonsterDTO = {
   baseDefense: number;
   evolutionLevel: number;
 
-  // NEW: align with what backend can send (and marketplace uses)
+  // align with what backend can send (and marketplace uses)
   artBasePath?: string | null;
   setCode?: string | null;
   editionType?: string | null;
@@ -52,6 +52,34 @@ function getArtUrlForMonster(m: UserMonsterDTO): string {
   return "/cards/base/test.png";
 }
 
+// Small helper to “warm” the cache for some monster images
+function preloadImages(urls: string[]): Promise<void> {
+  if (typeof window === "undefined") {
+    return Promise.resolve();
+  }
+
+  const unique = Array.from(
+    new Set(urls.filter((u) => typeof u === "string" && u.length > 0))
+  );
+  if (!unique.length) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    let loaded = 0;
+    const total = unique.length;
+
+    unique.forEach((url) => {
+      const img = new window.Image();
+      img.onload = img.onerror = () => {
+        loaded += 1;
+        if (loaded >= total) {
+          resolve();
+        }
+      };
+      img.src = url;
+    });
+  });
+}
+
 export default function SquadPage() {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
@@ -62,7 +90,7 @@ export default function SquadPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // NEW: which monster to show in detail modal
+  // which monster to show in detail modal
   const [detailMonsterId, setDetailMonsterId] = useState<string | null>(null);
 
   const maxPlayers = 6;
@@ -89,6 +117,11 @@ export default function SquadPage() {
         if (colRes.ok) {
           const colData: CollectionResponse = await colRes.json();
           setCollection(colData.monsters);
+
+          // Preload art for the first batch of monsters so they don't "crawl in"
+          const preview = colData.monsters.slice(0, 24);
+          const urls = preview.map((m) => getArtUrlForMonster(m));
+          void preloadImages(urls);
         }
 
         const squadRes = await fetch("/api/squad", {
@@ -507,7 +540,7 @@ function PitchCard({ monster }: { monster: UserMonsterDTO }) {
 
   return (
     <div className="min-w-[90px] rounded-lg border border-emerald-300/70 bg-emerald-900/80 px-2 py-2 text-center shadow-md flex flex-col items-center">
-      {/* NEW: tiny card thumbnail */}
+      {/* tiny card thumbnail */}
       <div className="mb-1 w-12 h-16 overflow-hidden rounded-[6px] border border-emerald-300/60 bg-slate-900/60">
         <img
           src={artUrl}

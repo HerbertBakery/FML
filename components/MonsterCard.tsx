@@ -1,6 +1,9 @@
 // components/MonsterCard.tsx
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useEffect } from "react";
 
 export type MonsterCardMonster = {
   displayName: string;
@@ -13,7 +16,7 @@ export type MonsterCardMonster = {
   baseDefense: number;
   evolutionLevel?: number;
 
-  // NEW: visual / edition info
+  // visual / edition info
   artUrl?: string;        // main card art (static or animated)
   hoverArtUrl?: string;   // optional alt art on hover
   setCode?: string;       // e.g. "BASE", "CHRISTMAS_TERRORS_2025"
@@ -78,9 +81,7 @@ export default function MonsterCard({
   children,
   detailHref,
 }: MonsterCardProps) {
-  const { border, background, badge } = getRarityClasses(
-    monster.rarity
-  );
+  const { border, background, badge } = getRarityClasses(monster.rarity);
 
   const hasArt = !!monster.artUrl;
   const editionText =
@@ -88,6 +89,14 @@ export default function MonsterCard({
     (typeof monster.serialNumber === "number"
       ? `Serial #${monster.serialNumber}`
       : undefined);
+
+  // Preload hover art so it swaps instantly on hover
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!monster.hoverArtUrl) return;
+    const img = new window.Image();
+    img.src = monster.hoverArtUrl;
+  }, [monster.hoverArtUrl]);
 
   return (
     <div
@@ -115,9 +124,7 @@ export default function MonsterCard({
         )}
 
         <div className="flex items-center justify-between mb-1">
-          <span className="font-semibold">
-            {monster.displayName}
-          </span>
+          <span className="font-semibold">{monster.displayName}</span>
           {rightBadge ? (
             <span className="text-[10px]">{rightBadge}</span>
           ) : (

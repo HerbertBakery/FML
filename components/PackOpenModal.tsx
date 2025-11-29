@@ -26,7 +26,7 @@ export type OpenedMonster = {
   baseDefense: number;
   evolutionLevel: number;
 
-  // NEW: allow art from backend, same as marketplace DTO
+  // allow art from backend, same as marketplace DTO
   artBasePath?: string | null;
 };
 
@@ -40,7 +40,7 @@ type PackOpenResponse = {
 
 type Props = {
   packId: PackId;
-  // NEW: if provided, this modal opens a reward pack (free) instead of charging coins
+  // if provided, this modal opens a reward pack (free) instead of charging coins
   rewardPackId?: string;
   onClose?: () => void;
   onOpened?: (monsters: OpenedMonster[], coinsAfter?: number) => void;
@@ -53,12 +53,44 @@ type Props = {
 
 // -------------------- Shared art helper (same logic as marketplace) --------------------
 
-function getArtUrlForMonster(m: Pick<OpenedMonster, "templateCode" | "artBasePath">): string {
+function getArtUrlForMonster(
+  m: Pick<OpenedMonster, "templateCode" | "artBasePath">
+): string {
   if (m.artBasePath) return m.artBasePath;
   if (m.templateCode) {
     return `/cards/base/${m.templateCode}.png`;
   }
   return "/cards/base/test.png";
+}
+
+// -------------------- Image preloading helper --------------------
+
+function preloadImages(urls: string[]): Promise<void> {
+  if (typeof window === "undefined") {
+    // On the server, skip
+    return Promise.resolve();
+  }
+
+  const unique = Array.from(
+    new Set(urls.filter((u) => typeof u === "string" && u.length > 0))
+  );
+  if (!unique.length) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    let loaded = 0;
+    const total = unique.length;
+
+    unique.forEach((url) => {
+      const img = new window.Image();
+      img.onload = img.onerror = () => {
+        loaded += 1;
+        if (loaded >= total) {
+          resolve();
+        }
+      };
+      img.src = url;
+    });
+  });
 }
 
 // -------------------- Theme helpers --------------------
@@ -129,7 +161,10 @@ const THEMES: Record<PackId, Theme> = {
 // -------------------- Card Visual --------------------
 type RarityKey = "COMMON" | "RARE" | "EPIC" | "LEGENDARY" | "DEFAULT";
 
-const rarityStyle: Record<RarityKey, { ring: string; glow: string; label: string }> = {
+const rarityStyle: Record<
+  RarityKey,
+  { ring: string; glow: string; label: string }
+> = {
   COMMON: {
     ring: "ring-zinc-400",
     glow: "shadow-zinc-400/30",
@@ -160,7 +195,12 @@ const rarityStyle: Record<RarityKey, { ring: string; glow: string; label: string
 function rarityKey(r: string | undefined | null): RarityKey {
   if (!r) return "DEFAULT";
   const upper = r.toUpperCase();
-  if (upper === "COMMON" || upper === "RARE" || upper === "EPIC" || upper === "LEGENDARY") {
+  if (
+    upper === "COMMON" ||
+    upper === "RARE" ||
+    upper === "EPIC" ||
+    upper === "LEGENDARY"
+  ) {
     return upper;
   }
   return "DEFAULT";
@@ -225,7 +265,9 @@ const MonsterRevealCard: React.FC<{ monster: OpenedMonster; delay?: number }> = 
             <span>MAG {monster.baseMagic}</span>
             <span>DEF {monster.baseDefense}</span>
           </div>
-          <div className="mt-2 text-[10px] text-emerald-300">Evo Lv. {monster.evolutionLevel}</div>
+          <div className="mt-2 text-[10px] text-emerald-300">
+            Evo Lv. {monster.evolutionLevel}
+          </div>
         </div>
       </div>
       <div className="absolute bottom-0 left-0 right-0 h-16 rounded-b-2xl bg-gradient-to-t from-white/10 to-transparent" />
@@ -272,9 +314,7 @@ const PackVisual: React.FC<{
           <h2 className={`text-2xl font-extrabold drop-shadow-lg ${theme.brandText}`}>
             FANTASY MONSTER
           </h2>
-          <p
-            className={`mt-1 text-xs font-semibold uppercase tracking-wide ${theme.subText}`}
-          >
+          <p className={`mt-1 text-xs font-semibold uppercase tracking-wide ${theme.subText}`}>
             {theme.label}
           </p>
         </div>
@@ -312,13 +352,9 @@ const PackOpenModal: React.FC<Props> = ({
     setErr(null);
     setPhase("buying");
     try {
-      const url = rewardPackId
-        ? "/api/reward-packs/open"
-        : "/api/packs/open";
+      const url = rewardPackId ? "/api/reward-packs/open" : "/api/packs/open";
 
-      const body = rewardPackId
-        ? { rewardPackId }
-        : { packId };
+      const body = rewardPackId ? { rewardPackId } : { packId };
 
       const r = await fetch(url, {
         method: "POST",
@@ -336,8 +372,16 @@ const PackOpenModal: React.FC<Props> = ({
       }
 
       const pulled = j.monsters ?? [];
+
+      // Save monsters + update coins immediately
       setMonsters(pulled);
       onOpened?.(pulled, j.coinsAfter);
+
+      // PRELOAD all monster art before we allow the pack to be opened
+      const artUrls = pulled.map((m) => getArtUrlForMonster(m));
+      await preloadImages(artUrls);
+
+      // Only once images are cached do we move to "ready" (pack on screen)
       setPhase("ready");
     } catch (e: any) {
       setErr(e?.message || "Failed to open pack. Please try again.");
