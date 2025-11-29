@@ -1,7 +1,7 @@
 // app/marketplace/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import MonsterCard from "@/components/MonsterCard";
 import MonsterDetailModal from "@/components/MonsterDetailModal";
@@ -63,24 +63,45 @@ function getArtUrlForMonster(m: UserMonsterDTO): string {
   return "/cards/base/test.png";
 }
 
+// ---------------------------
+// Rarity sort helper
+// ---------------------------
+const rarityOrder: Record<string, number> = {
+  COMMON: 1,
+  RARE: 2,
+  EPIC: 3,
+  LEGENDARY: 4,
+};
+
+function rarityScore(r: string | undefined | null): number {
+  if (!r) return 0;
+  const key = r.toUpperCase().trim();
+  return rarityOrder[key] ?? 0;
+}
+
 export default function MarketplacePage() {
   const [user, setUser] = useState<User | null>(null);
   const [checkingUser, setCheckingUser] = useState(true);
 
-  const [collection, setCollection] =
-    useState<UserMonsterDTO[]>([]);
-  const [marketListings, setMarketListings] =
-    useState<MarketListingDTO[]>([]);
-  const [loadingMarket, setLoadingMarket] =
-    useState(true);
-  const [error, setError] =
-    useState<string | null>(null);
-  const [actionMessage, setActionMessage] =
-    useState<string | null>(null);
+  const [collection, setCollection] = useState<UserMonsterDTO[]>([]);
+  const [marketListings, setMarketListings] = useState<MarketListingDTO[]>([]);
+  const [loadingMarket, setLoadingMarket] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   // which monster to show in the modal
-  const [detailMonsterId, setDetailMonsterId] =
-    useState<string | null>(null);
+  const [detailMonsterId, setDetailMonsterId] = useState<string | null>(null);
+
+  // ---------------------------
+  // Filters / search / sort
+  // ---------------------------
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterRarity, setFilterRarity] = useState<string>("ALL");
+  const [filterPosition, setFilterPosition] = useState<string>("ALL");
+  const [filterClub, setFilterClub] = useState<string>("ALL");
+  const [minPrice, setMinPrice] = useState<string>("");
+  const [maxPrice, setMaxPrice] = useState<string>("");
+  const [sortBy, setSortBy] = useState<string>("newest");
 
   async function loadAll() {
     setError(null);
@@ -120,24 +141,20 @@ export default function MarketplacePage() {
       }
 
       if (colRes.ok) {
-        const colJson =
-          (await colRes.json()) as CollectionResponse;
+        const colJson = (await colRes.json()) as CollectionResponse;
         setCollection(colJson.monsters || []);
       } else {
         setCollection([]);
       }
 
       if (marketRes.ok) {
-        const marketJson =
-          (await marketRes.json()) as MarketResponse;
+        const marketJson = (await marketRes.json()) as MarketResponse;
         setMarketListings(marketJson.listings || []);
       } else {
         setMarketListings([]);
       }
     } catch {
-      setError(
-        "Failed to load marketplace data. Please try again."
-      );
+      setError("Failed to load marketplace data. Please try again.");
       setCollection([]);
       setMarketListings([]);
     } finally {
@@ -154,9 +171,7 @@ export default function MarketplacePage() {
     setActionMessage(null);
     setError(null);
 
-    const raw = window.prompt(
-      "Enter price in coins for this monster:"
-    );
+    const raw = window.prompt("Enter price in coins for this monster:");
     if (!raw) return;
 
     const price = parseInt(raw.trim(), 10);
@@ -166,29 +181,22 @@ export default function MarketplacePage() {
     }
 
     try {
-      const res = await fetch(
-        "/api/marketplace/list",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            userMonsterId,
-            price,
-          }),
-        }
-      );
+      const res = await fetch("/api/marketplace/list", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          userMonsterId,
+          price,
+        }),
+      });
 
-      const data = (await res
-        .json()
-        .catch(() => null)) as { error?: string } | null;
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
 
       if (!res.ok) {
-        const msg =
-          data?.error ||
-          "Failed to list monster for sale.";
+        const msg = data?.error || "Failed to list monster for sale.";
         setError(msg);
         window.alert(msg);
         return;
@@ -197,8 +205,7 @@ export default function MarketplacePage() {
       setActionMessage("Monster listed for sale.");
       await loadAll();
     } catch {
-      const msg =
-        "Error listing monster for sale. Please try again.";
+      const msg = "Error listing monster for sale. Please try again.";
       setError(msg);
       window.alert(msg);
     }
@@ -208,32 +215,23 @@ export default function MarketplacePage() {
     setActionMessage(null);
     setError(null);
 
-    const confirmBuy = window.confirm(
-      "Are you sure you want to buy this monster?"
-    );
+    const confirmBuy = window.confirm("Are you sure you want to buy this monster?");
     if (!confirmBuy) return;
 
     try {
-      const res = await fetch(
-        "/api/marketplace/buy",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({ listingId }),
-        }
-      );
+      const res = await fetch("/api/marketplace/buy", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ listingId }),
+      });
 
-      const data = (await res
-        .json()
-        .catch(() => null)) as { error?: string } | null;
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
 
       if (!res.ok) {
-        const msg =
-          data?.error ||
-          "Failed to complete purchase.";
+        const msg = data?.error || "Failed to complete purchase.";
         setError(msg);
         window.alert(msg);
         return;
@@ -242,20 +240,117 @@ export default function MarketplacePage() {
       setActionMessage("Purchase successful!");
       await loadAll();
     } catch {
-      const msg =
-        "Error completing purchase. Please try again.";
+      const msg = "Error completing purchase. Please try again.";
       setError(msg);
       window.alert(msg);
     }
   }
 
+  // ---------------------------
+  // Derived filter options
+  // ---------------------------
+  const availableClubs = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of marketListings) {
+      if (l.userMonster.club) {
+        set.add(l.userMonster.club);
+      }
+    }
+    return Array.from(set).sort();
+  }, [marketListings]);
+
+  const availableRarities = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of marketListings) {
+      if (l.userMonster.rarity) {
+        set.add(l.userMonster.rarity.toUpperCase());
+      }
+    }
+    return Array.from(set).sort((a, b) => rarityScore(b) - rarityScore(a));
+  }, [marketListings]);
+
+  // ---------------------------
+  // Filtered + sorted listings
+  // ---------------------------
+  const filteredListings = useMemo(() => {
+    let list = [...marketListings];
+
+    const term = searchTerm.trim().toLowerCase();
+    if (term) {
+      list = list.filter((l) => {
+        const m = l.userMonster;
+        return (
+          m.displayName.toLowerCase().includes(term) ||
+          m.realPlayerName.toLowerCase().includes(term) ||
+          m.club.toLowerCase().includes(term)
+        );
+      });
+    }
+
+    if (filterRarity !== "ALL") {
+      list = list.filter(
+        (l) => l.userMonster.rarity.toUpperCase().trim() === filterRarity
+      );
+    }
+
+    if (filterPosition !== "ALL") {
+      list = list.filter(
+        (l) => l.userMonster.position.toUpperCase().trim() === filterPosition
+      );
+    }
+
+    if (filterClub !== "ALL") {
+      list = list.filter((l) => l.userMonster.club === filterClub);
+    }
+
+    const minP = parseInt(minPrice, 10);
+    if (!Number.isNaN(minP)) {
+      list = list.filter((l) => l.price >= minP);
+    }
+
+    const maxP = parseInt(maxPrice, 10);
+    if (!Number.isNaN(maxP)) {
+      list = list.filter((l) => l.price <= maxP);
+    }
+
+    // Sorting
+    list.sort((a, b) => {
+      switch (sortBy) {
+        case "price_low":
+          return a.price - b.price;
+        case "price_high":
+          return b.price - a.price;
+        case "rarity_high":
+          return rarityScore(b.userMonster.rarity) - rarityScore(a.userMonster.rarity);
+        case "oldest":
+          return 0; // we'll reverse after sort
+        case "newest":
+        default:
+          return 0;
+      }
+    });
+
+    if (sortBy === "oldest") {
+      list.reverse();
+    }
+
+    return list;
+  }, [
+    marketListings,
+    searchTerm,
+    filterRarity,
+    filterPosition,
+    filterClub,
+    minPrice,
+    maxPrice,
+    sortBy,
+  ]);
+
   if (checkingUser) {
     return (
       <main className="space-y-6">
         <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
-          <p className="text-sm text-slate-300">
-            Loading marketplace...
-          </p>
+          <p className="text-sm text-slate-300">Loading marketplace...</p>
         </section>
       </main>
     );
@@ -265,16 +360,13 @@ export default function MarketplacePage() {
     return (
       <main className="space-y-6">
         <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
-          <h2 className="text-xl font-semibold mb-1">
-            Monster Marketplace
-          </h2>
+          <h2 className="text-xl font-semibold mb-1">Monster Marketplace</h2>
           <p className="text-sm text-slate-300">
-            Log in or create an account to buy and sell
-            monsters.
+            Log in or create an account to buy and sell monsters.
           </p>
           <p className="text-xs text-slate-400">
-            The marketplace lets you trade monsterized
-            Premier League players using in-game coins.
+            The marketplace lets you trade monsterized Premier League players using in-game
+            coins.
           </p>
           <div className="flex gap-3">
             <Link
@@ -297,15 +389,13 @@ export default function MarketplacePage() {
 
   return (
     <main className="space-y-6">
+      {/* Header + balance */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold mb-1">
-              Monster Marketplace
-            </h2>
+            <h2 className="text-xl font-semibold mb-1">Monster Marketplace</h2>
             <p className="text-xs text-slate-400 mb-2">
-              Buy and sell monsterized Premier League
-              players using in-game coins.
+              Buy and sell monsterized Premier League players using in-game coins.
             </p>
             <p className="text-xs text-emerald-300">
               Balance:{" "}
@@ -317,21 +407,156 @@ export default function MarketplacePage() {
           <button
             type="button"
             onClick={loadAll}
-            className="rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
+            className="self-start rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
           >
             Refresh
           </button>
         </div>
-        {error && (
-          <p className="mt-2 text-xs text-red-400">
-            {error}
-          </p>
-        )}
+        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
         {actionMessage && (
-          <p className="mt-2 text-xs text-emerald-300">
-            {actionMessage}
-          </p>
+          <p className="mt-2 text-xs text-emerald-300">{actionMessage}</p>
         )}
+      </section>
+
+      {/* Filters + search */}
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-slate-100 mb-1">Search & filters</h3>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {/* Search */}
+          <div className="sm:col-span-1">
+            <label className="block text-[11px] text-slate-300 mb-1">
+              Search by name or club
+            </label>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="e.g. Haaland, MCI, Bruno..."
+              className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+            />
+          </div>
+
+          {/* Rarity + position */}
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-[11px] text-slate-300 mb-1">
+                Rarity
+              </label>
+              <select
+                value={filterRarity}
+                onChange={(e) => setFilterRarity(e.target.value)}
+                className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              >
+                <option value="ALL">All</option>
+                {availableRarities.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-[11px] text-slate-300 mb-1">
+                Position
+              </label>
+              <select
+                value={filterPosition}
+                onChange={(e) => setFilterPosition(e.target.value)}
+                className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              >
+                <option value="ALL">All</option>
+                <option value="GK">GK</option>
+                <option value="DEF">DEF</option>
+                <option value="MID">MID</option>
+                <option value="FWD">FWD</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Club + sort */}
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-[11px] text-slate-300 mb-1">
+                Club
+              </label>
+              <select
+                value={filterClub}
+                onChange={(e) => setFilterClub(e.target.value)}
+                className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              >
+                <option value="ALL">All</option>
+                {availableClubs.map((club) => (
+                  <option key={club} value={club}>
+                    {club}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-[11px] text-slate-300 mb-1">
+                Sort by
+              </label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="price_low">Price: Low → High</option>
+                <option value="price_high">Price: High → Low</option>
+                <option value="rarity_high">Rarity: High → Low</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Price range */}
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="flex gap-2 sm:col-span-1">
+            <div className="flex-1">
+              <label className="block text-[11px] text-slate-300 mb-1">
+                Min price
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[11px] text-slate-300 mb-1">
+                Max price
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              />
+            </div>
+          </div>
+          <div className="sm:col-span-2 flex items-end justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm("");
+                setFilterRarity("ALL");
+                setFilterPosition("ALL");
+                setFilterClub("ALL");
+                setMinPrice("");
+                setMaxPrice("");
+                setSortBy("newest");
+              }}
+              className="rounded-full border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
+            >
+              Clear filters
+            </button>
+          </div>
+        </div>
       </section>
 
       {/* Listings */}
@@ -340,19 +565,15 @@ export default function MarketplacePage() {
           Listings
         </h3>
         {loadingMarket ? (
+          <p className="text-xs text-slate-400">Loading listings...</p>
+        ) : filteredListings.length === 0 ? (
           <p className="text-xs text-slate-400">
-            Loading listings...
-          </p>
-        ) : marketListings.length === 0 ? (
-          <p className="text-xs text-slate-400">
-            No monsters are listed for sale yet. Be the
-            first to list one!
+            No monsters match your filters. Try clearing some filters or check back later.
           </p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-3">
-            {marketListings.map((listing) => {
-              const isMine =
-                listing.sellerId === user.id;
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {filteredListings.map((listing) => {
+              const isMine = listing.sellerId === user.id;
               const m = listing.userMonster;
               const artUrl = getArtUrlForMonster(m);
 
@@ -370,6 +591,10 @@ export default function MarketplacePage() {
                     baseDefense: m.baseDefense,
                     evolutionLevel: m.evolutionLevel,
                     artUrl,
+                    setCode: m.setCode ?? undefined,
+                    editionType: m.editionType ?? undefined,
+                    editionLabel: m.editionLabel ?? undefined,
+                    serialNumber: m.serialNumber ?? undefined,
                   }}
                   rightBadge={
                     <span className="uppercase text-[10px] text-emerald-300">
@@ -390,9 +615,7 @@ export default function MarketplacePage() {
                   <div className="mt-2 flex flex-col gap-1">
                     <button
                       type="button"
-                      onClick={() =>
-                        setDetailMonsterId(m.id)
-                      }
+                      onClick={() => setDetailMonsterId(m.id)}
                       className="w-full rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
                     >
                       View details
@@ -404,9 +627,7 @@ export default function MarketplacePage() {
                     ) : (
                       <button
                         type="button"
-                        onClick={() =>
-                          handleBuy(listing.id)
-                        }
+                        onClick={() => handleBuy(listing.id)}
                         className="w-full rounded-full bg-emerald-400 px-3 py-1 text-[11px] font-semibold text-slate-950 hover:bg-emerald-300"
                       >
                         Buy Monster
@@ -427,18 +648,14 @@ export default function MarketplacePage() {
         </h3>
         {collection.length === 0 ? (
           <p className="text-xs text-slate-400">
-            You don&apos;t own any monsters yet. Open your
-            starter packs on the{" "}
-            <Link
-              href="/"
-              className="underline underline-offset-2"
-            >
+            You don&apos;t own any monsters yet. Open your starter packs on the{" "}
+            <Link href="/" className="underline underline-offset-2">
               home page
             </Link>{" "}
             to get started.
           </p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {collection.map((m) => {
               const artUrl = getArtUrlForMonster(m);
 
@@ -456,23 +673,23 @@ export default function MarketplacePage() {
                     baseDefense: m.baseDefense,
                     evolutionLevel: m.evolutionLevel,
                     artUrl,
+                    setCode: m.setCode ?? undefined,
+                    editionType: m.editionType ?? undefined,
+                    editionLabel: m.editionLabel ?? undefined,
+                    serialNumber: m.serialNumber ?? undefined,
                   }}
                 >
                   <div className="mt-2 flex flex-col gap-1">
                     <button
                       type="button"
-                      onClick={() =>
-                        setDetailMonsterId(m.id)
-                      }
+                      onClick={() => setDetailMonsterId(m.id)}
                       className="w-full rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
                     >
                       View details
                     </button>
                     <button
                       type="button"
-                      onClick={() =>
-                        handleListForSale(m.id)
-                      }
+                      onClick={() => handleListForSale(m.id)}
                       className="w-full rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
                     >
                       List for Sale

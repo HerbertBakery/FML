@@ -11,6 +11,7 @@ type Challenge = {
   description: string;
   minMonsters: number;
   minRarity: string | null;
+  requiredRarity: string | null; // NEW: exact rarity requirement
   requiredPosition: string | null;
   requiredClub: string | null;
   rewardType: string;
@@ -36,38 +37,26 @@ export default function AdminChallengesPage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const [challenges, setChallenges] =
-    useState<Challenge[]>([]);
-  const [error, setError] =
-    useState<string | null>(null);
-  const [formError, setFormError] =
-    useState<string | null>(null);
-  const [formSuccess, setFormSuccess] =
-    useState<string | null>(null);
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
-  const [selectedId, setSelectedId] =
-    useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Form state
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
-  const [description, setDescription] =
-    useState("");
-  const [minMonsters, setMinMonsters] =
-    useState<number>(3);
+  const [description, setDescription] = useState("");
+  const [minMonsters, setMinMonsters] = useState<number>(3);
   const [minRarity, setMinRarity] = useState("");
-  const [requiredPosition, setRequiredPosition] =
-    useState("");
-  const [requiredClub, setRequiredClub] =
-    useState("");
-  const [rewardType, setRewardType] =
-    useState("coins");
-  const [rewardValue, setRewardValue] =
-    useState("");
-  const [isRepeatable, setIsRepeatable] =
-    useState<boolean>(true);
-  const [isActive, setIsActive] =
-    useState<boolean>(true);
+  const [requiredRarity, setRequiredRarity] = useState(""); // NEW
+  const [requiredPosition, setRequiredPosition] = useState("");
+  const [requiredClub, setRequiredClub] = useState("");
+  const [rewardType, setRewardType] = useState("coins");
+  const [rewardValue, setRewardValue] = useState("");
+  const [isRepeatable, setIsRepeatable] = useState<boolean>(true);
+  const [isActive, setIsActive] = useState<boolean>(true);
 
   function resetForm() {
     setSelectedId(null);
@@ -76,6 +65,7 @@ export default function AdminChallengesPage() {
     setDescription("");
     setMinMonsters(3);
     setMinRarity("");
+    setRequiredRarity(""); // NEW
     setRequiredPosition("");
     setRequiredClub("");
     setRewardType("coins");
@@ -90,17 +80,13 @@ export default function AdminChallengesPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        "/api/admin/challenges",
-        { credentials: "include" }
-      );
-      const json =
-        (await res.json()) as ListResponse;
+      const res = await fetch("/api/admin/challenges", {
+        credentials: "include",
+      });
+      const json = (await res.json()) as ListResponse;
 
       if (!res.ok) {
-        setError(
-          json.error || "Failed to load challenges."
-        );
+        setError(json.error || "Failed to load challenges.");
         setChallenges([]);
         return;
       }
@@ -125,14 +111,13 @@ export default function AdminChallengesPage() {
     setDescription(c.description || "");
     setMinMonsters(c.minMonsters || 1);
     setMinRarity(c.minRarity || "");
+    setRequiredRarity(c.requiredRarity || ""); // NEW
     setRequiredPosition(c.requiredPosition || "");
     setRequiredClub(c.requiredClub || "");
     setRewardType(c.rewardType || "coins");
     setRewardValue(c.rewardValue || "");
     setIsRepeatable(
-      typeof c.isRepeatable === "boolean"
-        ? c.isRepeatable
-        : true
+      typeof c.isRepeatable === "boolean" ? c.isRepeatable : true
     );
     setIsActive(c.isActive);
     setFormError(null);
@@ -148,16 +133,12 @@ export default function AdminChallengesPage() {
     }
 
     try {
-      const res = await fetch(
-        `/api/admin/challenges/${id}`,
-        { credentials: "include" }
-      );
-      const json =
-        (await res.json()) as SingleResponse;
+      const res = await fetch(`/api/admin/challenges/${id}`, {
+        credentials: "include",
+      });
+      const json = (await res.json()) as SingleResponse;
       if (!res.ok || !json.challenge) {
-        setFormError(
-          json.error || "Failed to load challenge."
-        );
+        setFormError(json.error || "Failed to load challenge.");
         return;
       }
       fillFormFromChallenge(json.challenge);
@@ -176,9 +157,7 @@ export default function AdminChallengesPage() {
       return;
     }
     if (!rewardType.trim() || !rewardValue.trim()) {
-      setFormError(
-        "Reward type and reward value are required."
-      );
+      setFormError("Reward type and reward value are required.");
       return;
     }
 
@@ -189,15 +168,15 @@ export default function AdminChallengesPage() {
         name: name.trim(),
         description: description.trim(),
         minMonsters:
-          Number.isFinite(minMonsters as any) &&
-          minMonsters > 0
+          Number.isFinite(minMonsters as any) && minMonsters > 0
             ? minMonsters
             : 1,
+        // Keep existing minRarity behavior
         minRarity: minRarity.trim() || null,
-        requiredPosition:
-          requiredPosition.trim() || null,
-        requiredClub:
-          requiredClub.trim() || null,
+        // NEW: exact rarity (if set, your API/validator can treat this as "must match exactly")
+        requiredRarity: requiredRarity.trim() || null,
+        requiredPosition: requiredPosition.trim() || null,
+        requiredClub: requiredClub.trim() || null,
         rewardType: rewardType.trim(),
         rewardValue: rewardValue.trim(),
         isRepeatable,
@@ -221,17 +200,12 @@ export default function AdminChallengesPage() {
       const json = await res.json();
 
       if (!res.ok) {
-        setFormError(
-          json?.error ||
-            "Failed to save challenge."
-        );
+        setFormError(json?.error || "Failed to save challenge.");
         return;
       }
 
       setFormSuccess(
-        selectedId
-          ? "Challenge updated."
-          : "Challenge created."
+        selectedId ? "Challenge updated." : "Challenge created."
       );
       await loadChallenges();
       if (!selectedId && json?.challenge?.id) {
@@ -260,10 +234,7 @@ export default function AdminChallengesPage() {
       );
       const json = await res.json();
       if (!res.ok || !json?.ok) {
-        setFormError(
-          json?.error ||
-            "Failed to deactivate challenge."
-        );
+        setFormError(json?.error || "Failed to deactivate challenge.");
         return;
       }
       setFormSuccess("Challenge deactivated.");
@@ -273,12 +244,22 @@ export default function AdminChallengesPage() {
         fillFormFromChallenge(json.challenge);
       }
     } catch (err) {
-      setFormError(
-        "Failed to deactivate challenge."
-      );
+      setFormError("Failed to deactivate challenge.");
     } finally {
       setDeleting(false);
     }
+  }
+
+  function formatRarityInfo(c: Challenge) {
+    const parts: string[] = [];
+    if (c.requiredRarity) {
+      parts.push(`exact ${c.requiredRarity}`);
+    }
+    if (c.minRarity) {
+      parts.push(`min ${c.minRarity}`);
+    }
+    if (parts.length === 0) return "any rarity";
+    return parts.join(" • ");
   }
 
   return (
@@ -290,12 +271,8 @@ export default function AdminChallengesPage() {
               Admin – Squad Builder Challenges
             </h1>
             <p className="text-xs text-slate-400">
-              Create and manage SBC templates that appear
-              on the public{" "}
-              <span className="font-mono">
-                /challenges
-              </span>{" "}
-              page.
+              Create and manage SBC templates that appear on the public{" "}
+              <span className="font-mono">/challenges</span> page.
             </p>
           </div>
           <button
@@ -322,13 +299,10 @@ export default function AdminChallengesPage() {
           Existing Challenges
         </h2>
         {loading ? (
-          <p className="text-xs text-slate-400">
-            Loading...
-          </p>
+          <p className="text-xs text-slate-400">Loading...</p>
         ) : challenges.length === 0 ? (
           <p className="text-xs text-slate-400">
-            No challenges yet. Create one using the form
-            below.
+            No challenges yet. Create one using the form below.
           </p>
         ) : (
           <div className="space-y-2 max-h-72 overflow-auto pr-1">
@@ -349,14 +323,14 @@ export default function AdminChallengesPage() {
                       {c.name}
                     </p>
                     <p className="text-[11px] text-slate-400">
-                      {c.code} • Reward: {c.rewardType}(
-                      {c.rewardValue}) • min{" "}
+                      {c.code} • Reward: {c.rewardType}({c.rewardValue}) • min{" "}
                       {c.minMonsters}
                     </p>
                     <p className="text-[10px] text-slate-500 mt-0.5">
-                      {c.isRepeatable
-                        ? "Repeatable"
-                        : "One-time"}
+                      Rarity: {formatRarityInfo(c)}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      {c.isRepeatable ? "Repeatable" : "One-time"}
                     </p>
                   </div>
                   <span
@@ -378,20 +352,14 @@ export default function AdminChallengesPage() {
       {/* Form */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
         <h2 className="text-sm font-semibold text-slate-100 mb-3">
-          {selectedId
-            ? "Edit Challenge"
-            : "Create New Challenge"}
+          {selectedId ? "Edit Challenge" : "Create New Challenge"}
         </h2>
 
         {formError && (
-          <p className="mb-2 text-xs text-red-400">
-            {formError}
-          </p>
+          <p className="mb-2 text-xs text-red-400">{formError}</p>
         )}
         {formSuccess && (
-          <p className="mb-2 text-xs text-emerald-300">
-            {formSuccess}
-          </p>
+          <p className="mb-2 text-xs text-emerald-300">{formSuccess}</p>
         )}
 
         <form
@@ -399,14 +367,10 @@ export default function AdminChallengesPage() {
           className="grid gap-3 sm:grid-cols-2"
         >
           <div className="space-y-1">
-            <label className="text-[11px] text-slate-300">
-              Code
-            </label>
+            <label className="text-[11px] text-slate-300">Code</label>
             <input
               value={code}
-              onChange={(e) =>
-                setCode(e.target.value)
-              }
+              onChange={(e) => setCode(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
               placeholder="PREM_FWD_3"
               required
@@ -417,14 +381,10 @@ export default function AdminChallengesPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] text-slate-300">
-              Name
-            </label>
+            <label className="text-[11px] text-slate-300">Name</label>
             <input
               value={name}
-              onChange={(e) =>
-                setName(e.target.value)
-              }
+              onChange={(e) => setName(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
               placeholder="Premier League Forwards"
               required
@@ -437,9 +397,7 @@ export default function AdminChallengesPage() {
             </label>
             <textarea
               value={description}
-              onChange={(e) =>
-                setDescription(e.target.value)
-              }
+              onChange={(e) => setDescription(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400 min-h-[60px]"
               placeholder="Submit at least 3 forwards from the same club to earn coins."
             />
@@ -454,39 +412,54 @@ export default function AdminChallengesPage() {
               min={1}
               value={minMonsters}
               onChange={(e) =>
-                setMinMonsters(
-                  parseInt(e.target.value || "1", 10)
-                )
+                setMinMonsters(parseInt(e.target.value || "1", 10))
               }
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
             />
           </div>
 
+          {/* Min rarity (existing behavior) */}
           <div className="space-y-1">
             <label className="text-[11px] text-slate-300">
               Min Rarity (optional)
             </label>
             <select
               value={minRarity}
-              onChange={(e) =>
-                setMinRarity(e.target.value)
-              }
+              onChange={(e) => setMinRarity(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
             >
               <option value="">None</option>
-              <option value="COMMON">
-                COMMON
-              </option>
-              <option value="RARE">
-                RARE
-              </option>
-              <option value="EPIC">
-                EPIC
-              </option>
-              <option value="LEGENDARY">
-                LEGENDARY
-              </option>
+              <option value="COMMON">COMMON</option>
+              <option value="RARE">RARE</option>
+              <option value="EPIC">EPIC</option>
+              <option value="LEGENDARY">LEGENDARY</option>
             </select>
+            <p className="text-[10px] text-slate-500">
+              Monsters must be at least this rarity (e.g. EPIC = EPIC or LEGENDARY).
+            </p>
+          </div>
+
+          {/* NEW: exact required rarity */}
+          <div className="space-y-1">
+            <label className="text-[11px] text-slate-300">
+              Required Rarity (exact, optional)
+            </label>
+            <select
+              value={requiredRarity}
+              onChange={(e) => setRequiredRarity(e.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
+            >
+              <option value="">Any</option>
+              <option value="COMMON">COMMON</option>
+              <option value="RARE">RARE</option>
+              <option value="EPIC">EPIC</option>
+              <option value="LEGENDARY">LEGENDARY</option>
+            </select>
+            <p className="text-[10px] text-slate-500">
+              If set, only monsters of exactly this rarity are allowed
+              (e.g. "only COMMONs"). Your validation can treat this as
+              overriding Min Rarity.
+            </p>
           </div>
 
           <div className="space-y-1">
@@ -495,11 +468,7 @@ export default function AdminChallengesPage() {
             </label>
             <select
               value={requiredPosition}
-              onChange={(e) =>
-                setRequiredPosition(
-                  e.target.value
-                )
-              }
+              onChange={(e) => setRequiredPosition(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
             >
               <option value="">Any</option>
@@ -516,9 +485,7 @@ export default function AdminChallengesPage() {
             </label>
             <input
               value={requiredClub}
-              onChange={(e) =>
-                setRequiredClub(e.target.value)
-              }
+              onChange={(e) => setRequiredClub(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
               placeholder="MCI, ARS, LIV, etc."
             />
@@ -530,20 +497,15 @@ export default function AdminChallengesPage() {
             </label>
             <select
               value={rewardType}
-              onChange={(e) =>
-                setRewardType(e.target.value)
-              }
+              onChange={(e) => setRewardType(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
             >
               <option value="coins">coins</option>
               <option value="pack">pack</option>
-              <option value="special">
-                special
-              </option>
+              <option value="special">special</option>
             </select>
             <p className="text-[10px] text-slate-500">
-              For packs/special, make sure your submit
-              API handles the rewardValue.
+              For packs/special, make sure your submit API handles the rewardValue.
             </p>
           </div>
 
@@ -553,9 +515,7 @@ export default function AdminChallengesPage() {
             </label>
             <input
               value={rewardValue}
-              onChange={(e) =>
-                setRewardValue(e.target.value)
-              }
+              onChange={(e) => setRewardValue(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
               placeholder="500 or 'gold' etc."
             />
@@ -566,17 +526,14 @@ export default function AdminChallengesPage() {
               id="isRepeatable"
               type="checkbox"
               checked={isRepeatable}
-              onChange={(e) =>
-                setIsRepeatable(e.target.checked)
-              }
+              onChange={(e) => setIsRepeatable(e.target.checked)}
               className="h-3 w-3 rounded border-slate-600 bg-slate-950"
             />
             <label
               htmlFor="isRepeatable"
               className="text-[11px] text-slate-300"
             >
-              Repeatable (users can complete this
-              challenge multiple times)
+              Repeatable (users can complete this challenge multiple times)
             </label>
           </div>
 
@@ -585,9 +542,7 @@ export default function AdminChallengesPage() {
               id="isActive"
               type="checkbox"
               checked={isActive}
-              onChange={(e) =>
-                setIsActive(e.target.checked)
-              }
+              onChange={(e) => setIsActive(e.target.checked)}
               className="h-3 w-3 rounded border-slate-600 bg-slate-950"
             />
             <label
@@ -626,9 +581,7 @@ export default function AdminChallengesPage() {
                     : "border-red-500 text-red-400 hover:bg-red-500/10"
                 }`}
               >
-                {deleting
-                  ? "Deactivating..."
-                  : "Deactivate"}
+                {deleting ? "Deactivating..." : "Deactivate"}
               </button>
             )}
           </div>

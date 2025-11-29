@@ -56,6 +56,7 @@ type UpdateBody = {
   description?: string;
   minMonsters?: number;
   minRarity?: string | null;
+  requiredRarity?: string | null;
   requiredPosition?: string | null;
   requiredClub?: string | null;
   rewardType?: string;
@@ -112,6 +113,9 @@ export async function PUT(
     }
     if (body.minRarity !== undefined) {
       updateData.minRarity = body.minRarity || null;
+    }
+    if (body.requiredRarity !== undefined) {
+      updateData.requiredRarity = body.requiredRarity || null;
     }
     if (body.requiredPosition !== undefined) {
       updateData.requiredPosition =

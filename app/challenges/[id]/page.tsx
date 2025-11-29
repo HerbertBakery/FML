@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import MonsterDetailModal from "@/components/MonsterDetailModal";
+import MonsterCard from "@/components/MonsterCard";
 
 type Challenge = {
   id: string;
@@ -39,7 +40,7 @@ type UserMonsterDTO = {
   baseDefense: number;
   evolutionLevel: number;
 
-  // NEW: align with collection / marketplace DTO
+  // align with collection / marketplace DTO
   artBasePath?: string | null;
   setCode?: string | null;
   editionType?: string | null;
@@ -76,6 +77,61 @@ export default function ChallengeDetailPage() {
 
   // which monster is open in the detail modal
   const [detailMonsterId, setDetailMonsterId] = useState<string | null>(null);
+
+  // ------- NEW: search + filters (mirroring marketplace) -------
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterRarity, setFilterRarity] = useState<string>("ALL");
+  const [filterPosition, setFilterPosition] = useState<string>("ALL");
+  const [filterClub, setFilterClub] = useState<string>("ALL");
+
+  const availableClubs = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of collection) {
+      if (m.club) set.add(m.club);
+    }
+    return Array.from(set).sort();
+  }, [collection]);
+
+  const availableRarities = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of collection) {
+      if (m.rarity) set.add(m.rarity.toUpperCase());
+    }
+    return Array.from(set).sort();
+  }, [collection]);
+
+  const filteredCollection = useMemo(() => {
+    let list = [...collection];
+
+    const term = searchTerm.trim().toLowerCase();
+    if (term) {
+      list = list.filter((m) => {
+        return (
+          m.displayName.toLowerCase().includes(term) ||
+          m.realPlayerName.toLowerCase().includes(term) ||
+          m.club.toLowerCase().includes(term)
+        );
+      });
+    }
+
+    if (filterRarity !== "ALL") {
+      list = list.filter(
+        (m) => m.rarity.toUpperCase().trim() === filterRarity
+      );
+    }
+
+    if (filterPosition !== "ALL") {
+      list = list.filter(
+        (m) => m.position.toUpperCase().trim() === filterPosition
+      );
+    }
+
+    if (filterClub !== "ALL") {
+      list = list.filter((m) => m.club === filterClub);
+    }
+
+    return list;
+  }, [collection, searchTerm, filterRarity, filterPosition, filterClub]);
 
   async function load() {
     setLoading(true);
@@ -365,70 +421,189 @@ export default function ChallengeDetailPage() {
           <h2 className="text-sm font-semibold text-slate-100 mb-2">
             Your Collection
           </h2>
+
           {collection.length === 0 ? (
             <p className="text-xs text-slate-400">
               You don&apos;t have any monsters to submit yet. Open more packs first.
             </p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-3">
-              {collection.map((m) => {
-                const selected = selectedIds.includes(m.id);
-                const artUrl = getArtUrlForMonster(m);
+            <>
+              {/* Search + filters (mirroring marketplace style) */}
+              <div className="mb-3 space-y-3">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {/* Search */}
+                  <div className="sm:col-span-1">
+                    <label className="block text-[11px] text-slate-300 mb-1">
+                      Search by name or club
+                    </label>
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="e.g. Haaland, MCI, Bruno..."
+                      className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    />
+                  </div>
 
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => toggleSelect(m.id)}
-                    className={`text-left rounded-xl border p-3 text-xs transition ${
-                      selected
-                        ? "border-emerald-400 bg-emerald-500/10"
-                        : "border-slate-700 bg-slate-950/60 hover:border-emerald-400"
-                    }`}
-                  >
-                    {/* Card image (same art logic as marketplace/squad) */}
-                    <div className="mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4]">
-                      <img
-                        src={artUrl}
-                        alt={m.displayName}
-                        className="w-full h-full object-cover"
-                      />
+                  {/* Rarity + position */}
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="block text-[11px] text-slate-300 mb-1">
+                        Rarity
+                      </label>
+                      <select
+                        value={filterRarity}
+                        onChange={(e) => setFilterRarity(e.target.value)}
+                        className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      >
+                        <option value="ALL">All</option>
+                        {availableRarities.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold">
-                        {m.displayName}
-                      </span>
-                      <span className="text-[10px] uppercase text-emerald-300">
-                        {m.rarity}
-                      </span>
+                    <div className="flex-1">
+                      <label className="block text-[11px] text-slate-300 mb-1">
+                        Position
+                      </label>
+                      <select
+                        value={filterPosition}
+                        onChange={(e) => setFilterPosition(e.target.value)}
+                        className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      >
+                        <option value="ALL">All</option>
+                        <option value="GK">GK</option>
+                        <option value="DEF">DEF</option>
+                        <option value="MID">MID</option>
+                        <option value="FWD">FWD</option>
+                      </select>
                     </div>
-                    <p className="text-[11px] text-slate-300">
-                      {m.realPlayerName} • {m.club}
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      {m.position} • ATK {m.baseAttack} • MAG {m.baseMagic} • DEF{" "}
-                      {m.baseDefense}
-                    </p>
-                    <p className="text-[10px] text-emerald-300 mt-1">
-                      Evo Lv. {m.evolutionLevel}
-                    </p>
+                  </div>
 
-                    {/* View details button that opens the modal */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDetailMonsterId(m.id);
-                      }}
-                      className="mt-2 inline-flex items-center rounded-full border border-slate-600 px-2 py-1 text-[10px] text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
-                    >
-                      View details
-                    </button>
-                  </button>
-                );
-              })}
-            </div>
+                  {/* Club + clear */}
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="block text-[11px] text-slate-300 mb-1">
+                        Club
+                      </label>
+                      <select
+                        value={filterClub}
+                        onChange={(e) => setFilterClub(e.target.value)}
+                        className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      >
+                        <option value="ALL">All</option>
+                        {availableClubs.map((club) => (
+                          <option key={club} value={club}>
+                            {club}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex-1 flex items-end justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchTerm("");
+                          setFilterRarity("ALL");
+                          setFilterPosition("ALL");
+                          setFilterClub("ALL");
+                        }}
+                        className="rounded-full border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {filteredCollection.length === 0 ? (
+                <p className="text-xs text-slate-400">
+                  No monsters match your filters. Try clearing some filters.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                  {filteredCollection.map((m) => {
+                    const selected = selectedIds.includes(m.id);
+                    const artUrl = getArtUrlForMonster(m);
+
+                    return (
+                      <div
+                        key={m.id}
+                        onClick={() => toggleSelect(m.id)}
+                        className={`cursor-pointer transition rounded-2xl ${
+                          selected ? "ring-2 ring-emerald-400 ring-offset-0" : ""
+                        }`}
+                      >
+                        <MonsterCard
+                          monster={{
+                            displayName: m.displayName,
+                            realPlayerName: m.realPlayerName,
+                            position: m.position,
+                            club: m.club,
+                            rarity: m.rarity,
+                            baseAttack: m.baseAttack,
+                            baseMagic: m.baseMagic,
+                            baseDefense: m.baseDefense,
+                            evolutionLevel: m.evolutionLevel,
+                            artUrl,
+                            setCode: m.setCode ?? undefined,
+                            editionType: m.editionType ?? undefined,
+                            editionLabel: m.editionLabel ?? undefined,
+                            serialNumber: m.serialNumber ?? undefined,
+                          }}
+                          rightBadge={
+                            <span className="uppercase text-[10px] text-emerald-300">
+                              {m.rarity}
+                            </span>
+                          }
+                        >
+                          <p className="text-[11px] text-slate-300">
+                            {m.realPlayerName} • {m.club}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            {m.position} • ATK {m.baseAttack} • MAG {m.baseMagic} • DEF{" "}
+                            {m.baseDefense}
+                          </p>
+                          <p className="text-[10px] text-emerald-300 mt-1">
+                            Evo Lv. {m.evolutionLevel}
+                          </p>
+
+                          <div className="mt-2 flex gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSelect(m.id);
+                              }}
+                              className={`flex-1 rounded-full px-2 py-1 text-[10px] font-semibold border ${
+                                selected
+                                  ? "border-emerald-400 bg-emerald-500/10 text-emerald-300"
+                                  : "border-slate-600 text-slate-200 hover:border-emerald-400"
+                              }`}
+                            >
+                              {selected ? "Selected" : "Select"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDetailMonsterId(m.id);
+                              }}
+                              className="flex-1 rounded-full border border-slate-600 px-2 py-1 text-[10px] text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+                            >
+                              View details
+                            </button>
+                          </div>
+                        </MonsterCard>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </section>
       </main>

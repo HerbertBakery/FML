@@ -47,6 +47,7 @@ type CreateBody = {
   description?: string;
   minMonsters?: number;
   minRarity?: string | null;
+  requiredRarity?: string | null;
   requiredPosition?: string | null;
   requiredClub?: string | null;
   rewardType?: string;
@@ -101,10 +102,10 @@ export async function POST(req: NextRequest) {
           code,
           name,
           description,
-          minMonsters: minMonsters > 0
-            ? minMonsters
-            : 1,
+          minMonsters:
+            minMonsters > 0 ? minMonsters : 1,
           minRarity: body.minRarity || null,
+          requiredRarity: body.requiredRarity || null,
           requiredPosition:
             body.requiredPosition || null,
           requiredClub: body.requiredClub || null,

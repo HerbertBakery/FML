@@ -262,8 +262,12 @@ model SquadChallengeTemplate {
   name        String
   description String
   // Optional constraints (kept simple as strings/ints)
-  minMonsters Int                           @default(3)
-  minRarity   String?                       // e.g. "RARE"
+  minMonsters     Int        @default(3)
+  minRarity       String?    // e.g. "RARE" or above
+
+  // NEW: exact rarity constraint, e.g. "COMMON" = only commons allowed
+  requiredRarity  String?
+
   requiredPosition String?                  // e.g. "FWD", or null for any
   requiredClub     String?                  // e.g. "MCI", or null for any
   requiredNation   String?                  // reserved if you ever add nations later

@@ -34,7 +34,7 @@ type ApiMonster = {
   isConsumed: boolean;
   createdAt: string;
 
-  // NEW: art path (optional, if backend sends it)
+  // art path (optional, if backend sends it)
   artBasePath?: string | null;
 
   owner: {
@@ -76,7 +76,6 @@ type MonsterDetail = {
   ownerEmail?: string | null;
   ownerUsername?: string | null;
 
-  // NEW: art path for modal
   artBasePath?: string | null;
 };
 
@@ -87,6 +86,12 @@ type HistoryEvent = {
   createdAt: string;
   actorEmail?: string | null;
   actorUsername?: string | null;
+};
+
+type PriceHistoryEvent = {
+  id: string;
+  price: number;
+  createdAt: string;
 };
 
 type MonsterDetailModalProps = {
@@ -115,12 +120,19 @@ export default function MonsterDetailModal({
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // NEW: market price history
+  const [priceHistory, setPriceHistory] = useState<PriceHistoryEvent[]>([]);
+  const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
+  const [priceHistoryError, setPriceHistoryError] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setLoading(true);
       setError(null);
+      setPriceHistory([]);
+      setPriceHistoryError(null);
 
       try {
         const res = await fetch(`/api/monsters/${monsterId}`, {
@@ -171,7 +183,6 @@ export default function MonsterDetailModal({
             createdAt: apiMonster.createdAt,
             ownerEmail: apiMonster.owner?.email ?? null,
             ownerUsername: apiMonster.owner?.username ?? null,
-            // NEW: art base path
             artBasePath: apiMonster.artBasePath ?? null,
           });
 
@@ -207,14 +218,70 @@ export default function MonsterDetailModal({
     };
   }, [monsterId]);
 
-  const handleBackdropClick = (
-    e: React.MouseEvent<HTMLDivElement>
-  ) => {
+  // NEW: fetch market price history once we know the monster templateCode
+  useEffect(() => {
+    if (!monster?.templateCode) return;
+
+    let cancelled = false;
+    async function loadHistory() {
+      setPriceHistoryLoading(true);
+      setPriceHistoryError(null);
+      try {
+        const res = await fetch(
+          `/api/marketplace/price-history?templateCode=${encodeURIComponent(
+            monster.templateCode
+          )}`,
+          { credentials: "include" }
+        );
+        const data = (await res.json()) as {
+          history?: PriceHistoryEvent[];
+          error?: string;
+        };
+
+        if (!res.ok || data.error) {
+          if (!cancelled) {
+            setPriceHistoryError(data.error || "Failed to load price history.");
+            setPriceHistory([]);
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setPriceHistory(data.history || []);
+        }
+      } catch {
+        if (!cancelled) {
+          setPriceHistoryError("Failed to load price history.");
+          setPriceHistory([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setPriceHistoryLoading(false);
+        }
+      }
+    }
+
+    loadHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [monster?.templateCode]);
+
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Close when clicking the dark backdrop, but not the panel itself
     if (e.target === e.currentTarget) {
       onClose();
     }
   };
+
+  // Helper: average price
+  const averagePrice =
+    priceHistory.length > 0
+      ? Math.round(
+          priceHistory.reduce((sum, h) => sum + h.price, 0) / priceHistory.length
+        )
+      : null;
 
   return (
     <div
@@ -366,6 +433,65 @@ export default function MonsterDetailModal({
                     ))}
                   </ul>
                 )}
+              </div>
+
+              {/* NEW: Market price history */}
+              <div className="mt-3">
+                <h3 className="text-[11px] font-semibold text-slate-200 mb-1">
+                  Market price history
+                </h3>
+                {priceHistoryLoading && (
+                  <p className="text-[11px] text-slate-400">
+                    Loading price history...
+                  </p>
+                )}
+                {!priceHistoryLoading && priceHistoryError && (
+                  <p className="text-[11px] text-red-400">
+                    {priceHistoryError}
+                  </p>
+                )}
+                {!priceHistoryLoading &&
+                  !priceHistoryError &&
+                  priceHistory.length === 0 && (
+                    <p className="text-[11px] text-slate-400">
+                      No marketplace trades recorded yet for this monster template.
+                    </p>
+                  )}
+                {!priceHistoryLoading &&
+                  !priceHistoryError &&
+                  priceHistory.length > 0 && (
+                    <div className="space-y-1.5">
+                      {averagePrice !== null && (
+                        <p className="text-[11px] text-emerald-300">
+                          Average sale price (last {priceHistory.length}):
+                          {" "}
+                          <span className="font-mono font-semibold">
+                            {averagePrice}
+                          </span>{" "}
+                          coins
+                        </p>
+                      )}
+                      <ul className="space-y-1 max-h-40 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+                        {priceHistory.map((h) => (
+                          <li
+                            key={h.id}
+                            className="flex items-center justify-between text-[10px] text-slate-200"
+                          >
+                            <span className="font-mono">
+                              {h.price} coins
+                            </span>
+                            <span className="text-slate-500">
+                              {new Date(h.createdAt).toLocaleDateString()}{" "}
+                              {new Date(h.createdAt).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
               </div>
             </>
           )}

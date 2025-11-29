@@ -36,6 +36,13 @@ export async function GET(req: NextRequest) {
         baseMagic: l.userMonster.baseMagic,
         baseDefense: l.userMonster.baseDefense,
         evolutionLevel: l.userMonster.evolutionLevel,
+
+        // NEW: pass through edition + art info to the frontend
+        setCode: l.userMonster.setCode,
+        editionType: l.userMonster.editionType,
+        editionLabel: l.userMonster.editionLabel,
+        serialNumber: l.userMonster.serialNumber,
+        artBasePath: l.userMonster.artBasePath,
       },
     }));
 

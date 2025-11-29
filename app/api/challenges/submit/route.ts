@@ -10,6 +10,56 @@ type Body = {
   userMonsterIds?: string[]; // monsters being submitted
 };
 
+// Helper: rarity ranking
+const rarityOrder = ["common", "rare", "epic", "legendary"] as const;
+
+function rarityIndex(r: string | null | undefined): number {
+  if (!r) return -1;
+  const idx = rarityOrder.indexOf(r.toLowerCase() as any);
+  return idx === -1 ? -1 : idx;
+}
+
+// Helper: enforce requiredRarity / minRarity
+function validateRarityConstraint(
+  challenge: {
+    minRarity: string | null;
+    requiredRarity?: string | null;
+  },
+  monsters: { rarity: string }[]
+) {
+  const { minRarity, requiredRarity } = challenge;
+
+  // 1) Exact rarity – if set, ONLY that rarity is allowed
+  if (requiredRarity) {
+    const required = requiredRarity.toLowerCase();
+    const bad = monsters.some(
+      (m) => (m.rarity || "").toLowerCase() !== required
+    );
+    if (bad) {
+      throw new Error(
+        `This challenge requires ONLY ${requiredRarity.toUpperCase()} monsters.`
+      );
+    }
+    // If we have exact rarity, we don't also enforce minRarity – exact wins.
+    return;
+  }
+
+  // 2) Legacy behavior: minimum rarity ("RARE or better")
+  if (minRarity) {
+    const minIdx = rarityIndex(minRarity);
+    if (minIdx >= 0) {
+      const bad = monsters.some(
+        (m) => rarityIndex(m.rarity) < minIdx
+      );
+      if (bad) {
+        throw new Error(
+          `All submitted monsters must be at least ${minRarity.toUpperCase()} rarity.`
+        );
+      }
+    }
+  }
+}
+
 export async function POST(req: NextRequest) {
   const user = await getUserFromRequest(req);
 
@@ -94,7 +144,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Very simple checks for requiredPosition, club, rarity, etc.
+      // Position constraint
       if (challenge.requiredPosition) {
         const ok = monsters.every(
           (m) => m.position === challenge.requiredPosition
@@ -106,6 +156,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Club constraint
       if (challenge.requiredClub) {
         const ok = monsters.every(
           (m) => m.club === challenge.requiredClub
@@ -117,24 +168,14 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (challenge.minRarity) {
-        const minReq = challenge.minRarity.toLowerCase();
-        const rarOrder = ["common", "rare", "epic", "legendary"];
-        const minIndex = rarOrder.indexOf(minReq);
-        if (minIndex >= 0) {
-          const ok = monsters.every((m) => {
-            const idx = rarOrder.indexOf(
-              (m.rarity || "").toLowerCase()
-            );
-            return idx >= minIndex;
-          });
-          if (!ok) {
-            throw new Error(
-              `All submitted monsters must be at least ${challenge.minRarity} rarity.`
-            );
-          }
-        }
-      }
+      // NEW: rarity constraint (exact or min)
+      validateRarityConstraint(
+        {
+          minRarity: challenge.minRarity,
+          requiredRarity: (challenge as any).requiredRarity ?? null,
+        },
+        monsters
+      );
 
       // Create submission
       const submission =
@@ -205,7 +246,8 @@ export async function POST(req: NextRequest) {
           rewardDescription = `${coins} coins`;
         }
       } else if (challenge.rewardType === "pack") {
-        const packType = challenge.rewardValue || "starter";
+        const packType =
+          challenge.rewardValue || "starter";
         await tx.packOpen.create({
           data: {
             userId: user.id,
