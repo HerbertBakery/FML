@@ -571,7 +571,7 @@ export default function MarketplacePage() {
             No monsters match your filters. Try clearing some filters or check back later.
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             {filteredListings.map((listing) => {
               const isMine = listing.sellerId === user.id;
               const m = listing.userMonster;
@@ -655,7 +655,7 @@ export default function MarketplacePage() {
             to get started.
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             {collection.map((m) => {
               const artUrl = getArtUrlForMonster(m);
 
