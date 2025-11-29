@@ -524,7 +524,7 @@ export default function ChallengeDetailPage() {
                   No monsters match your filters. Try clearing some filters.
                 </p>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                   {filteredCollection.map((m) => {
                     const selected = selectedIds.includes(m.id);
                     const artUrl = getArtUrlForMonster(m);

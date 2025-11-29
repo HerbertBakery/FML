@@ -100,7 +100,7 @@ export default function MonsterCard({
 
   return (
     <div
-      className={`group rounded-xl border ${border} ${background} p-3 text-xs flex flex-col justify-between gap-2 overflow-hidden`}
+      className={`group rounded-xl border ${border} ${background} p-2 sm:p-3 text-xs flex flex-col justify-between gap-2 overflow-hidden`}
     >
       <div>
         {/* Art / image area */}
@@ -124,7 +124,9 @@ export default function MonsterCard({
         )}
 
         <div className="flex items-center justify-between mb-1">
-          <span className="font-semibold">{monster.displayName}</span>
+          <span className="font-semibold truncate max-w-[70%]">
+            {monster.displayName}
+          </span>
           {rightBadge ? (
             <span className="text-[10px]">{rightBadge}</span>
           ) : (
@@ -136,7 +138,7 @@ export default function MonsterCard({
           )}
         </div>
 
-        <p className="text-[11px] text-slate-300">
+        <p className="text-[11px] text-slate-300 truncate">
           {monster.realPlayerName} • {monster.club}
         </p>
 
