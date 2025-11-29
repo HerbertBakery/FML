@@ -95,7 +95,8 @@ model UserMonster {
   gameweekSlots      GameweekEntryMonster[]
   evolutionEvents    EvolutionEvent[]
 
-  marketListing      MarketListing?
+  // CHANGED: one monster can have many listings over time
+  marketListings     MarketListing[]      @relation("UserMonsterListings")
   transactions       MarketTransaction[]
 
   // NEW: used in SBC submissions
@@ -222,13 +223,18 @@ model MarketListing {
   id            String       @id @default(cuid())
   seller        User         @relation(fields: [sellerId], references: [id])
   sellerId      String
-  userMonster   UserMonster  @relation(fields: [userMonsterId], references: [id])
-  userMonsterId String       @unique
+
+  userMonster   UserMonster  @relation("UserMonsterListings", fields: [userMonsterId], references: [id])
+  userMonsterId String
+
   price         Int
   isActive      Boolean      @default(true)
   createdAt     DateTime     @default(now())
 
   transactions  MarketTransaction[]
+
+  // NEW: Only one active listing per monster at a time
+  @@unique([userMonsterId, isActive])
 }
 
 model MarketTransaction {

@@ -1,3 +1,4 @@
+// app/api/marketplace/list/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
@@ -88,7 +89,6 @@ export async function POST(req: NextRequest) {
       });
 
       // 4) Remove this monster from ALL of the user's saved squads
-      // (so it disappears from "My Squads" once listed)
       await tx.squadMonster.deleteMany({
         where: {
           userMonsterId: monster.id,
@@ -139,9 +139,7 @@ export async function POST(req: NextRequest) {
     console.error("Error listing monster:", err);
     return NextResponse.json(
       {
-        error:
-          err?.message ||
-          "Failed to list monster.",
+        error: err?.message || "Failed to list monster.",
       },
       { status: 400 }
     );
