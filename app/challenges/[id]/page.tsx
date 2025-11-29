@@ -78,7 +78,7 @@ export default function ChallengeDetailPage() {
   // which monster is open in the detail modal
   const [detailMonsterId, setDetailMonsterId] = useState<string | null>(null);
 
-  // ------- NEW: search + filters (mirroring marketplace) -------
+  // ------- search + filters (mirroring marketplace) -------
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRarity, setFilterRarity] = useState<string>("ALL");
   const [filterPosition, setFilterPosition] = useState<string>("ALL");
@@ -560,17 +560,7 @@ export default function ChallengeDetailPage() {
                             </span>
                           }
                         >
-                          <p className="text-[11px] text-slate-300">
-                            {m.realPlayerName} • {m.club}
-                          </p>
-                          <p className="text-[11px] text-slate-400 mt-1">
-                            {m.position} • ATK {m.baseAttack} • MAG {m.baseMagic} • DEF{" "}
-                            {m.baseDefense}
-                          </p>
-                          <p className="text-[10px] text-emerald-300 mt-1">
-                            Evo Lv. {m.evolutionLevel}
-                          </p>
-
+                          {/* Only actions here – no repeated info text */}
                           <div className="mt-2 flex gap-1">
                             <button
                               type="button"
