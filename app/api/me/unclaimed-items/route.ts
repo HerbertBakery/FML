@@ -19,9 +19,8 @@ import { getUserFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-// For relisted items, also make TTL instant in development so testing is easy.
-const RELIST_TTL_DAYS =
-  process.env.NODE_ENV === "development" ? 0 : 3;
+// TTL for relisted items (in days)
+const RELIST_TTL_DAYS = 3;
 
 type ResolveBody = {
   listingId?: string;

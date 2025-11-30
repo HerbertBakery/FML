@@ -12,9 +12,7 @@ type Body = {
 };
 
 // simple TTL for listings (in days)
-// In development, make this 0 so listings expire instantly for testing.
-const LISTING_TTL_DAYS =
-  process.env.NODE_ENV === "development" ? 0 : 3;
+const LISTING_TTL_DAYS = 2;
 
 export async function POST(req: NextRequest) {
   const user = await getUserFromRequest(req);
