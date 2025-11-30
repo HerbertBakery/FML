@@ -42,6 +42,7 @@ type MarketListingDTO = {
   price: number;
   sellerId: string;
   sellerEmail: string;
+  expiresAt: string | null;
   userMonster: UserMonsterDTO;
 };
 
@@ -77,6 +78,26 @@ function rarityScore(r: string | undefined | null): number {
   if (!r) return 0;
   const key = r.toUpperCase().trim();
   return rarityOrder[key] ?? 0;
+}
+
+// ---------------------------
+// Time-remaining helper
+// ---------------------------
+function formatTimeRemaining(expiresAt: string | null): string | null {
+  if (!expiresAt) return null;
+  const end = new Date(expiresAt).getTime();
+  const now = Date.now();
+  const diff = end - now;
+  if (diff <= 0) return "Expired";
+
+  const totalMinutes = Math.floor(diff / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) return `${days}d ${hours}h left`;
+  if (hours > 0) return `${hours}h ${minutes}m left`;
+  return `${minutes}m left`;
 }
 
 export default function MarketplacePage() {
@@ -313,7 +334,8 @@ export default function MarketplacePage() {
       list = list.filter((l) => l.price <= maxP);
     }
 
-    // Sorting
+    // Sorting – currently just placeholder (createdAt not on DTO yet),
+    // but we keep the shape for future extension.
     list.sort((a, b) => {
       switch (sortBy) {
         case "price_low":
@@ -576,6 +598,7 @@ export default function MarketplacePage() {
               const isMine = listing.sellerId === user.id;
               const m = listing.userMonster;
               const artUrl = getArtUrlForMonster(m);
+              const timeLeft = formatTimeRemaining(listing.expiresAt);
 
               return (
                 <MonsterCard
@@ -609,6 +632,11 @@ export default function MarketplacePage() {
                     </span>{" "}
                     coins
                   </p>
+                  {timeLeft && (
+                    <p className="text-[10px] text-amber-300">
+                      Time left: {timeLeft}
+                    </p>
+                  )}
                   <p className="text-[10px] text-slate-500">
                     Seller: {listing.sellerEmail}
                   </p>
