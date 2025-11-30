@@ -71,11 +71,13 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // ✅ Deactivate the listing
+      // ✅ Deactivate the listing and mark as SOLD
       await tx.marketListing.update({
         where: { id: listing.id },
         data: {
           isActive: false,
+          resolutionStatus: "SOLD",
+          resolvedAt: new Date(),
         },
       });
 

@@ -11,6 +11,11 @@ type Body = {
   price?: number;
 };
 
+// simple TTL for listings (in days)
+// In development, make this 0 so listings expire instantly for testing.
+const LISTING_TTL_DAYS =
+  process.env.NODE_ENV === "development" ? 0 : 3;
+
 export async function POST(req: NextRequest) {
   const user = await getUserFromRequest(req);
 
@@ -63,7 +68,9 @@ export async function POST(req: NextRequest) {
       }
 
       if (monster.isConsumed) {
-        throw new Error("This monster has been consumed and cannot be listed.");
+        throw new Error(
+          "This monster has been consumed and cannot be listed."
+        );
       }
 
       // 2) Ensure there's no active listing for this monster
@@ -78,13 +85,17 @@ export async function POST(req: NextRequest) {
         throw new Error("This monster is already listed for sale.");
       }
 
-      // 3) Create new listing
+      // 3) Create new listing with an expiry timestamp
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + LISTING_TTL_DAYS);
+
       const listing = await tx.marketListing.create({
         data: {
           sellerId: user.id,
           userMonsterId: monster.id,
           price: Math.floor(price),
           isActive: true,
+          expiresAt,
         },
       });
 

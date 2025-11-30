@@ -27,7 +27,7 @@ export type MonsterCardMonster = {
 
 type MonsterCardProps = {
   monster: MonsterCardMonster;
-  /** Optional badge shown in top-right instead of rarity text */
+  /** Optional badge shown instead of the default rarity text */
   rightBadge?: ReactNode;
   /** Extra content rendered below the stats (price, buttons, etc.) */
   children?: ReactNode;
@@ -100,7 +100,7 @@ export default function MonsterCard({
 
   return (
     <div
-      className={`group rounded-xl border ${border} ${background} p-2 sm:p-3 text-xs flex flex-col justify-between gap-2 overflow-hidden`}
+      className={`group rounded-xl border ${border} ${background} p-3 text-xs flex flex-col justify-between gap-2 overflow-hidden`}
     >
       <div>
         {/* Art / image area */}
@@ -123,22 +123,25 @@ export default function MonsterCard({
           </div>
         )}
 
-        <div className="flex items-center justify-between mb-1">
-          <span className="font-semibold truncate max-w-[70%]">
+        {/* Name on its own line, rarity/rightBadge on the next line, left-aligned */}
+        <div className="mb-1">
+          <span className="font-semibold block">
             {monster.displayName}
           </span>
-          {rightBadge ? (
-            <span className="text-[10px]">{rightBadge}</span>
-          ) : (
-            <span
-              className={`text-[10px] uppercase font-semibold ${badge}`}
-            >
-              {monster.rarity}
-            </span>
-          )}
+          <div className="mt-0.5">
+            {rightBadge ? (
+              <span className="text-[10px]">{rightBadge}</span>
+            ) : (
+              <span
+                className={`text-[10px] uppercase font-semibold ${badge}`}
+              >
+                {monster.rarity}
+              </span>
+            )}
+          </div>
         </div>
 
-        <p className="text-[11px] text-slate-300 truncate">
+        <p className="text-[11px] text-slate-300">
           {monster.realPlayerName} • {monster.club}
         </p>
 

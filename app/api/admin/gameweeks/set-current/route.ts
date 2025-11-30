@@ -1,22 +1,20 @@
 // app/api/admin/gameweeks/set-current/route.ts
+// or src/app/... depending on your project
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-// POST /api/admin/gameweeks/set-current
-// Body: { number: 13 }  // gameweek number to set as current
 export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
 
-    // Optional: tighten this if you have roles
-    if (!user /* || user.role !== "ADMIN" */) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+    // Lock down if you have roles
+    // if (!user || user.role !== "ADMIN")
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await req.json();
@@ -34,11 +32,23 @@ export async function POST(req: NextRequest) {
       data: { isActive: false },
     });
 
-    // 2) Mark this one as current
-    // This assumes Gameweek.number is unique.
-    const gameweek = await prisma.gameweek.update({
+    // 2) Mark this one as current (uses updateMany, not update)
+    const result = await prisma.gameweek.updateMany({
       where: { number },
       data: { isActive: true },
+    });
+
+    if (result.count === 0) {
+      // No gameweek with that number
+      return NextResponse.json(
+        { error: `No gameweek found with number ${number}` },
+        { status: 404 }
+      );
+    }
+
+    // 3) Fetch the now-current gameweek to return it
+    const gameweek = await prisma.gameweek.findFirst({
+      where: { number, isActive: true },
     });
 
     return NextResponse.json({
@@ -46,7 +56,7 @@ export async function POST(req: NextRequest) {
       gameweek,
     });
   } catch (err) {
-    console.error("Error in set-current:", err);
+    console.error("Error in /api/admin/gameweeks/set-current:", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

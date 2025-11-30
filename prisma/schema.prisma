@@ -234,9 +234,14 @@ model MarketListing {
   isActive      Boolean      @default(true)
   createdAt     DateTime     @default(now())
 
+  // NEW: listing expiry + resolution (for "items that didn't sell")
+  expiresAt        DateTime?
+  resolutionStatus String?   // "SOLD" | "EXPIRED_PENDING" | "EXPIRED_RETURNED" | "EXPIRED_QUICK_SOLD" | "EXPIRED_RELISTED"
+  resolvedAt       DateTime?
+
   transactions  MarketTransaction[]
 
-  // NEW: Only one active listing per monster at a time
+  // Only one active listing per monster at a time
   @@unique([userMonsterId, isActive])
 }
 

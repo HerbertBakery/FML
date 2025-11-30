@@ -34,6 +34,14 @@ export default function RootLayout({
               {/* Main tabs + auth */}
               <div className="flex flex-col items-end gap-2">
                 <nav className="flex flex-wrap items-center justify-end gap-2 text-[11px]">
+                  {/* NEW: Home goes first, back to dashboard */}
+                  <Link
+                    href="/"
+                    className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+                  >
+                    Home
+                  </Link>
+
                   <Link
                     href="/squad"
                     className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
@@ -63,7 +71,7 @@ export default function RootLayout({
                     Shop
                   </Link>
 
-                  {/* NEW: Objectives tab */}
+                  {/* Objectives tab */}
                   <Link
                     href="/me/objectives"
                     className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"

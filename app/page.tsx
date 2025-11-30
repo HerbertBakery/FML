@@ -67,31 +67,62 @@ type CollectionResponse = {
   starterPacksOpened: number;
 };
 
+// ---------- Unclaimed / expired listing types ----------
+
+type UnclaimedMonster = {
+  id: string;
+  templateCode: string;
+  displayName: string;
+  realPlayerName: string;
+  position: string;
+  club: string;
+  rarity: string;
+  baseAttack: number;
+  baseMagic: number;
+  baseDefense: number;
+  evolutionLevel: number;
+  artBasePath?: string | null;
+};
+
+type UnclaimedItem = {
+  listingId: string;
+  createdAt: string;
+  expiresAt: string | null;
+  userMonster: UnclaimedMonster;
+};
+
+type UnclaimedResponse = {
+  items?: UnclaimedItem[];
+  error?: string;
+};
+
 export default function HomePage() {
   const [me, setMe] = useState<MeUser | null>(null);
-  const [summary, setSummary] =
-    useState<SummaryResponse | null>(null);
-  const [loading, setLoading] =
-    useState<boolean>(true);
-  const [error, setError] =
-    useState<string | null>(null);
+  const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [streak, setStreak] =
-    useState<StreakStatus | null>(null);
-  const [streakError, setStreakError] =
-    useState<string | null>(null);
-  const [claimingStreak, setClaimingStreak] =
-    useState<boolean>(false);
-  const [streakMessage, setStreakMessage] =
-    useState<string | null>(null);
+  const [streak, setStreak] = useState<StreakStatus | null>(null);
+  const [streakError, setStreakError] = useState<string | null>(null);
+  const [claimingStreak, setClaimingStreak] = useState<boolean>(false);
+  const [streakMessage, setStreakMessage] = useState<string | null>(null);
 
-  const [starterPacksOpened, setStarterPacksOpened] =
-    useState<number | null>(null);
-  const [starterError, setStarterError] =
-    useState<string | null>(null);
-  const [starterMessage, setStarterMessage] =
-    useState<string | null>(null);
-  const [showStarterModal, setShowStarterModal] =
+  const [starterPacksOpened, setStarterPacksOpened] = useState<number | null>(
+    null
+  );
+  const [starterError, setStarterError] = useState<string | null>(null);
+  const [starterMessage, setStarterMessage] = useState<string | null>(null);
+  const [showStarterModal, setShowStarterModal] = useState<boolean>(false);
+
+  // NEW: expired listings / unclaimed items
+  const [unclaimedItems, setUnclaimedItems] = useState<UnclaimedItem[]>([]);
+  const [unclaimedError, setUnclaimedError] = useState<string | null>(null);
+  const [unclaimedMessage, setUnclaimedMessage] = useState<string | null>(null);
+  const [showUnclaimedModal, setShowUnclaimedModal] = useState<boolean>(false);
+  const [selectedUnclaimedId, setSelectedUnclaimedId] = useState<string | null>(
+    null
+  );
+  const [resolvingUnclaimed, setResolvingUnclaimed] =
     useState<boolean>(false);
 
   async function load() {
@@ -101,6 +132,8 @@ export default function HomePage() {
     setStreakMessage(null);
     setStarterError(null);
     setStarterMessage(null);
+    setUnclaimedError(null);
+    setUnclaimedMessage(null);
 
     try {
       const meRes = await fetch("/api/auth/me", {
@@ -112,6 +145,7 @@ export default function HomePage() {
         setSummary(null);
         setStreak(null);
         setStarterPacksOpened(null);
+        setUnclaimedItems([]);
         setLoading(false);
         return;
       }
@@ -122,6 +156,7 @@ export default function HomePage() {
         setSummary(null);
         setStreak(null);
         setStarterPacksOpened(null);
+        setUnclaimedItems([]);
         setLoading(false);
         return;
       }
@@ -129,27 +164,18 @@ export default function HomePage() {
       setMe(meData.user);
 
       // Manager summary
-      const sumRes = await fetch(
-        "/api/me/summary",
-        {
-          credentials: "include",
-        }
-      );
+      const sumRes = await fetch("/api/me/summary", {
+        credentials: "include",
+      });
 
       if (!sumRes.ok) {
-        const data = (await sumRes
-          .json()
-          .catch(() => null)) as
+        const data = (await sumRes.json().catch(() => null)) as
           | SummaryResponse
           | null;
-        setError(
-          data?.error ||
-            "Failed to load manager summary."
-        );
+        setError(data?.error || "Failed to load manager summary.");
         setSummary(null);
       } else {
-        const data: SummaryResponse =
-          await sumRes.json();
+        const data: SummaryResponse = await sumRes.json();
         if (data.error) {
           setError(data.error);
         }
@@ -161,8 +187,7 @@ export default function HomePage() {
         credentials: "include",
       });
       if (streakRes.ok) {
-        const s: StreakResponse =
-          await streakRes.json();
+        const s: StreakResponse = await streakRes.json();
         if (s.error) {
           setStreakError(s.error);
           setStreak(null);
@@ -172,9 +197,7 @@ export default function HomePage() {
           setStreak(null);
         }
       } else {
-        const s = (await streakRes
-          .json()
-          .catch(() => null)) as
+        const s = (await streakRes.json().catch(() => null)) as
           | StreakResponse
           | null;
         if (s?.error) {
@@ -184,32 +207,49 @@ export default function HomePage() {
       }
 
       // Load starter pack meta (how many free starter packs opened)
-      const colRes = await fetch(
-        "/api/me/collection",
-        {
-          credentials: "include",
-        }
-      );
+      const colRes = await fetch("/api/me/collection", {
+        credentials: "include",
+      });
       if (colRes.ok) {
-        const colData: CollectionResponse =
-          await colRes.json();
-        setStarterPacksOpened(
-          colData.starterPacksOpened ?? 0
-        );
+        const colData: CollectionResponse = await colRes.json();
+        setStarterPacksOpened(colData.starterPacksOpened ?? 0);
       } else {
         setStarterPacksOpened(null);
       }
+
+      // NEW: load any listings that expired and didn't sell
+      const unclaimedRes = await fetch("/api/me/unclaimed-items", {
+        credentials: "include",
+      });
+
+      if (unclaimedRes.ok) {
+        const data: UnclaimedResponse = await unclaimedRes.json();
+        if (data.error) {
+          setUnclaimedError(data.error);
+          setUnclaimedItems([]);
+        } else {
+          setUnclaimedItems(data.items || []);
+        }
+      } else {
+        const data = (await unclaimedRes.json().catch(() => null)) as
+          | UnclaimedResponse
+          | null;
+        if (data?.error) {
+          setUnclaimedError(data.error);
+        } else {
+          setUnclaimedError("Failed to load items that didn't sell.");
+        }
+        setUnclaimedItems([]);
+      }
     } catch {
-      setError(
-        "Error loading dashboard data."
-      );
+      setError("Error loading dashboard data.");
       setMe(null);
       setSummary(null);
       setStreak(null);
-      setStreakError(
-        "Could not load streak data."
-      );
+      setStreakError("Could not load streak data.");
       setStarterPacksOpened(null);
+      setUnclaimedItems([]);
+      setUnclaimedError("Could not load items that didn't sell.");
     } finally {
       setLoading(false);
     }
@@ -226,22 +266,14 @@ export default function HomePage() {
     setClaimingStreak(true);
 
     try {
-      const res = await fetch(
-        "/api/streak/claim",
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
-      const data = await res
-        .json()
-        .catch(() => null);
+      const res = await fetch("/api/streak/claim", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => null);
 
       if (!res.ok || !data?.ok) {
-        setStreakError(
-          data?.error ||
-            "Failed to claim daily reward."
-        );
+        setStreakError(data?.error || "Failed to claim daily reward.");
         return;
       }
 
@@ -256,17 +288,12 @@ export default function HomePage() {
       setStreak({
         currentStreak,
         longestStreak,
-        lastClaimedAt:
-          lastClaimedAt || null,
+        lastClaimedAt: lastClaimedAt || null,
         canClaim: false,
       });
 
       // Update coins in header/dashboard
-      setMe((prev) =>
-        prev
-          ? { ...prev, coins: coinsAfter }
-          : prev
-      );
+      setMe((prev) => (prev ? { ...prev, coins: coinsAfter } : prev));
       setSummary((prev) =>
         prev
           ? {
@@ -283,19 +310,14 @@ export default function HomePage() {
         `Daily reward claimed! You earned ${coinsGranted} coins.`
       );
     } catch {
-      setStreakError(
-        "Something went wrong claiming the reward."
-      );
+      setStreakError("Something went wrong claiming the reward.");
     } finally {
       setClaimingStreak(false);
     }
   }
 
   function handleOpenStarterPack() {
-    if (
-      starterPacksOpened === null ||
-      starterPacksOpened >= 2
-    ) {
+    if (starterPacksOpened === null || starterPacksOpened >= 2) {
       return;
     }
     setStarterError(null);
@@ -303,19 +325,85 @@ export default function HomePage() {
     setShowStarterModal(true);
   }
 
+  // NEW: resolve a single unclaimed / expired listing
+  async function handleResolveUnclaimed(action: "RETURN" | "QUICK_SELL" | "RELIST") {
+    if (!selectedUnclaimedId) return;
+    setResolvingUnclaimed(true);
+    setUnclaimedError(null);
+    setUnclaimedMessage(null);
+
+    try {
+      const res = await fetch("/api/me/unclaimed-items", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          listingId: selectedUnclaimedId,
+          action,
+        }),
+      });
+
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+        coinsAfter?: number;
+        message?: string;
+      } | null;
+
+      if (!res.ok || !data?.ok) {
+        setUnclaimedError(data?.error || "Failed to handle that item.");
+        return;
+      }
+
+      if (typeof data.coinsAfter === "number") {
+        setMe((prev) =>
+          prev ? { ...prev, coins: data.coinsAfter } : prev
+        );
+        setSummary((prev) =>
+          prev
+            ? {
+                ...prev,
+                user: {
+                  ...prev.user,
+                  coins: data.coinsAfter,
+                },
+              }
+            : prev
+        );
+      }
+
+      setUnclaimedItems((prev) =>
+        prev.filter((i) => i.listingId !== selectedUnclaimedId)
+      );
+      setSelectedUnclaimedId(null);
+
+      setUnclaimedMessage(
+        data.message ||
+          (action === "RETURN"
+            ? "Monster returned to your collection."
+            : action === "QUICK_SELL"
+            ? "Monster quick-sold for coins."
+            : "Monster relisted on the marketplace.")
+      );
+    } catch {
+      setUnclaimedError("Something went wrong handling that item.");
+    } finally {
+      setResolvingUnclaimed(false);
+    }
+  }
+
   // Logged-out view
   if (!me) {
     return (
       <main className="space-y-6">
         <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
-          <h1 className="text-2xl font-bold mb-2">
-            Fantasy Monster League
-          </h1>
+          <h1 className="text-2xl font-bold mb-2">Fantasy Monster League</h1>
           <p className="text-sm text-slate-300 mb-4">
-            Build a squad of monsterized Premier
-            League stars, open packs, trade on the
-            marketplace, and compete in fantasy
-            leaderboards every gameweek.
+            Build a squad of monsterized Premier League stars, open packs, trade
+            on the marketplace, and compete in fantasy leaderboards every
+            gameweek.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link
@@ -339,27 +427,23 @@ export default function HomePage() {
           </h2>
           <ol className="list-decimal list-inside space-y-1">
             <li>
-              Sign up and open your <b>free starter
-              packs</b>.
+              Sign up and open your <b>free starter packs</b>.
             </li>
             <li>
-              Build your <b>6-a-side monster squad</b>
-              (1 GK, at least 1 in each position).
+              Build your <b>6-a-side monster squad</b> (1 GK, at least 1 in each
+              position).
             </li>
             <li>
-              Each gameweek, your monsters score
-              points based on real Premier League
-              performances.
+              Each gameweek, your monsters score points based on real Premier
+              League performances.
             </li>
             <li>
-              Evolve monsters as their real-life
-              player hits milestones, and climb the{" "}
-              <b>global leaderboards</b>.
+              Evolve monsters as their real-life player hits milestones, and
+              climb the <b>global leaderboards</b>.
             </li>
             <li>
-              Buy and sell monsters on the{" "}
-              <b>marketplace</b> to build your dream
-              club.
+              Buy and sell monsters on the <b>marketplace</b> to build your
+              dream club.
             </li>
           </ol>
         </section>
@@ -369,8 +453,7 @@ export default function HomePage() {
 
   // Logged-in dashboard
   const starterAvailable =
-    starterPacksOpened !== null &&
-    starterPacksOpened < 2;
+    starterPacksOpened !== null && starterPacksOpened < 2;
 
   return (
     <>
@@ -378,9 +461,7 @@ export default function HomePage() {
         <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold mb-1">
-                Manager Dashboard
-              </h1>
+              <h1 className="text-2xl font-bold mb-1">Manager Dashboard</h1>
               <p className="text-xs text-slate-400 mb-1">
                 Welcome back,{" "}
                 <span className="font-mono">
@@ -391,9 +472,7 @@ export default function HomePage() {
               {summary?.user?.createdAt && (
                 <p className="text-[11px] text-slate-500">
                   Manager since{" "}
-                  {new Date(
-                    summary.user.createdAt
-                  ).toLocaleDateString()}
+                  {new Date(summary.user.createdAt).toLocaleDateString()}
                 </p>
               )}
             </div>
@@ -414,9 +493,7 @@ export default function HomePage() {
 
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs">
-              <p className="text-[11px] text-slate-400">
-                Coins
-              </p>
+              <p className="text-[11px] text-slate-400">Coins</p>
               <p className="mt-1 text-lg font-semibold text-emerald-300 font-mono">
                 {summary?.user?.coins ?? me.coins}
               </p>
@@ -433,9 +510,7 @@ export default function HomePage() {
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs">
-              <p className="text-[11px] text-slate-400">
-                Monsters Owned
-              </p>
+              <p className="text-[11px] text-slate-400">Monsters Owned</p>
               <p className="mt-1 text-lg font-semibold text-sky-300 font-mono">
                 {summary?.monsters?.totalOwned ?? 0}
               </p>
@@ -452,9 +527,7 @@ export default function HomePage() {
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs">
-              <p className="text-[11px] text-slate-400">
-                Season Progress
-              </p>
+              <p className="text-[11px] text-slate-400">Season Progress</p>
               <p className="mt-1 text-lg font-semibold text-amber-300 font-mono">
                 {summary?.season?.totalPoints ?? 0} pts
               </p>
@@ -466,18 +539,13 @@ export default function HomePage() {
                   </span>
                   :{" "}
                   <span className="font-mono">
-                    {
-                      summary
-                        .latestGameweek
-                        .points
-                    }{" "}
-                    pts
+                    {summary.latestGameweek.points} pts
                   </span>
                 </p>
               ) : (
                 <p className="mt-1 text-[11px] text-slate-300">
-                  No gameweek scores yet. Set your squad
-                  before the next deadline.
+                  No gameweek scores yet. Set your squad before the next
+                  deadline.
                 </p>
               )}
               <p className="mt-2 text-[11px] text-slate-400">
@@ -515,8 +583,7 @@ export default function HomePage() {
                 </p>
               ) : (
                 <p className="mt-1 text-[11px] text-slate-400">
-                  Track your daily logins and earn escalating
-                  coin rewards.
+                  Track your daily logins and earn escalating coin rewards.
                 </p>
               )}
               {streakMessage && (
@@ -533,16 +600,10 @@ export default function HomePage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                disabled={
-                  claimingStreak ||
-                  !streak ||
-                  !streak.canClaim
-                }
+                disabled={claimingStreak || !streak || !streak.canClaim}
                 onClick={handleClaimStreak}
                 className={`rounded-full px-4 py-2 text-[11px] font-semibold ${
-                  claimingStreak ||
-                  !streak ||
-                  !streak.canClaim
+                  claimingStreak || !streak || !streak.canClaim
                     ? "bg-slate-800 text-slate-500 cursor-not-allowed"
                     : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
                 }`}
@@ -564,63 +625,117 @@ export default function HomePage() {
           </p>
         </section>
 
-        {/* Starter packs card – shiny, glowing, clickable */}
-        <section className="rounded-2xl border border-emerald-500/40 bg-emerald-950/50 p-4 text-xs">
+        {/* NEW: expired listings / "items that didn't sell" – always visible */}
+        <section className="rounded-2xl border border-amber-500/40 bg-amber-950/40 p-4 text-xs">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <p className="text-[11px] font-semibold text-emerald-200">
-                Free Starter Packs
+              <p className="text-[11px] font-semibold text-amber-200">
+                Listings that didn’t sell
               </p>
-              <p className="mt-1 text-[11px] text-emerald-100">
-                You can open up to{" "}
-                <span className="font-mono">2</span> free
-                Starter Packs to kickstart your club.
-              </p>
-              <p className="mt-1 text-[11px] text-emerald-200">
-                Opened so far:{" "}
-                <span className="font-mono">
-                  {starterPacksOpened ?? 0}
-                </span>{" "}
-                / 2
-              </p>
-              {starterMessage && (
+
+              {unclaimedItems.length > 0 ? (
+                <>
+                  <p className="mt-1 text-[11px] text-amber-100">
+                    {unclaimedItems.length === 1
+                      ? "1 monster listing expired without a buyer."
+                      : `${unclaimedItems.length} monster listings expired without buyers.`}
+                  </p>
+                  <p className="mt-1 text-[10px] text-amber-200/80">
+                    Review them to send monsters back to your collection,
+                    quick-sell for coins, or relist on the transfer market.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-1 text-[11px] text-amber-100">
+                    You don’t currently have any expired or failed listings.
+                  </p>
+                  <p className="mt-1 text-[10px] text-amber-200/80">
+                    When a transfer listing expires without a buyer (or is
+                    marked as failed), it will appear here so you can decide
+                    what to do with the monster.
+                  </p>
+                </>
+              )}
+
+              {unclaimedMessage && (
                 <p className="mt-1 text-[11px] text-emerald-300">
-                  {starterMessage}
+                  {unclaimedMessage}
                 </p>
               )}
-              {starterError && (
+              {unclaimedError && (
                 <p className="mt-1 text-[11px] text-red-400">
-                  {starterError}
+                  {unclaimedError}
                 </p>
               )}
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                disabled={
-                  !starterAvailable ||
-                  starterPacksOpened === null
-                }
-                onClick={handleOpenStarterPack}
-                className={`relative rounded-full px-5 py-2 text-[11px] font-semibold transition transform ${
-                  !starterAvailable ||
-                  starterPacksOpened === null
-                    ? "bg-emerald-900 text-emerald-400/60 cursor-not-allowed border border-emerald-800"
-                    : "bg-emerald-400 text-slate-950 border border-emerald-300 shadow-lg shadow-emerald-400/60 hover:bg-emerald-300 hover:shadow-emerald-400/80 hover:-translate-y-0.5"
-                }`}
+                onClick={() => setShowUnclaimedModal(true)}
+                className="rounded-full px-5 py-2 text-[11px] font-semibold bg-amber-400 text-slate-950 border border-amber-300 shadow-lg shadow-amber-400/50 hover:bg-amber-300"
               >
-                {starterAvailable
-                  ? "Open Free Starter Pack"
-                  : "All free packs claimed"}
+                Review items
               </button>
             </div>
           </div>
-          <p className="mt-2 text-[10px] text-emerald-200/80">
-            Starter Packs contain random monsters from across
-            the league. After you’ve opened both, use your
-            coins to buy Bronze, Silver, or Gold packs.
-          </p>
         </section>
+
+        {/* Starter packs card – ONLY while there are free packs remaining */}
+        {starterAvailable && (
+          <section className="rounded-2xl border border-emerald-500/40 bg-emerald-950/50 p-4 text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold text-emerald-200">
+                  Free Starter Packs
+                </p>
+                <p className="mt-1 text-[11px] text-emerald-100">
+                  You can open up to{" "}
+                  <span className="font-mono">2</span> free Starter Packs to
+                  kickstart your club.
+                </p>
+                <p className="mt-1 text-[11px] text-emerald-200">
+                  Opened so far:{" "}
+                  <span className="font-mono">
+                    {starterPacksOpened ?? 0}
+                  </span>{" "}
+                  / 2
+                </p>
+                {starterMessage && (
+                  <p className="mt-1 text-[11px] text-emerald-300">
+                    {starterMessage}
+                  </p>
+                )}
+                {starterError && (
+                  <p className="mt-1 text-[11px] text-red-400">
+                    {starterError}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!starterAvailable || starterPacksOpened === null}
+                  onClick={handleOpenStarterPack}
+                  className={`relative rounded-full px-5 py-2 text-[11px] font-semibold transition transform ${
+                    !starterAvailable || starterPacksOpened === null
+                      ? "bg-emerald-900 text-emerald-400/60 cursor-not-allowed border border-emerald-800"
+                      : "bg-emerald-400 text-slate-950 border border-emerald-300 shadow-lg shadow-emerald-400/60 hover:bg-emerald-300 hover:shadow-emerald-400/80 hover:-translate-y-0.5"
+                  }`}
+                >
+                  {starterAvailable
+                    ? "Open Free Starter Pack"
+                    : "All free packs claimed"}
+                </button>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] text-emerald-200/80">
+              Starter Packs contain random monsters from across the league.
+              After you’ve opened both, use your coins to buy Bronze, Silver, or
+              Gold packs.
+            </p>
+          </section>
+        )}
 
         <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
           <h2 className="text-sm font-semibold text-slate-100 mb-3">
@@ -631,15 +746,13 @@ export default function HomePage() {
               href="/squad"
               className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-400 transition-colors"
             >
-              <p className="text-[11px] text-slate-400">
-                Squad
-              </p>
+              <p className="text-[11px] text-slate-400">Squad</p>
               <p className="mt-1 text-sm font-semibold text-slate-100">
                 Set Your 6-a-side Team
               </p>
               <p className="mt-1 text-[11px] text-slate-400">
-                Pick 1 GK and a balanced mix of DEF, MID,
-                FWD before each gameweek.
+                Pick 1 GK and a balanced mix of DEF, MID, FWD before each
+                gameweek.
               </p>
             </Link>
 
@@ -647,15 +760,13 @@ export default function HomePage() {
               href="/packs"
               className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-400 transition-colors"
             >
-              <p className="text-[11px] text-slate-400">
-                Packs
-              </p>
+              <p className="text-[11px] text-slate-400">Packs</p>
               <p className="mt-1 text-sm font-semibold text-slate-100">
                 Open Monster Packs
               </p>
               <p className="mt-1 text-[11px] text-slate-400">
-                Use coins to buy Bronze, Silver, and Gold
-                packs to grow your club.
+                Use coins to buy Bronze, Silver, and Gold packs to grow your
+                club.
               </p>
             </Link>
 
@@ -663,15 +774,12 @@ export default function HomePage() {
               href="/marketplace"
               className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-400 transition-colors"
             >
-              <p className="text-[11px] text-slate-400">
-                Marketplace
-              </p>
+              <p className="text-[11px] text-slate-400">Marketplace</p>
               <p className="mt-1 text-sm font-semibold text-slate-100">
                 Trade Monsters
               </p>
               <p className="mt-1 text-[11px] text-slate-400">
-                Buy low, sell high, and target key
-                monsters for your tactics.
+                Buy low, sell high, and target key monsters for your tactics.
               </p>
             </Link>
 
@@ -679,20 +787,152 @@ export default function HomePage() {
               href="/leagues"
               className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-400 transition-colors"
             >
-              <p className="text-[11px] text-slate-400">
-                Leagues
-              </p>
+              <p className="text-[11px] text-slate-400">Leagues</p>
               <p className="mt-1 text-sm font-semibold text-slate-100">
                 Join Mini-Leagues
               </p>
               <p className="mt-1 text-[11px] text-slate-400">
-                Create or join private leagues and compete
-                with friends for bragging rights.
+                Create or join private leagues and compete with friends for
+                bragging rights.
               </p>
             </Link>
           </div>
         </section>
       </main>
+
+      {/* NEW: modal for expired / unclaimed listings */}
+      {showUnclaimedModal && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 sm:p-6">
+          <div className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-950/90 ring-1 ring-white/10 p-6">
+            <div className="flex items-center justify-between gap-4">
+              <h3 className="text-lg font-semibold">
+                Listings that didn’t sell
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowUnclaimedModal(false)}
+                className="rounded-lg px-3 py-1 text-sm text-slate-300 hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-300">
+              Tap a monster card to select it, then choose what you’d like to
+              do.
+            </p>
+
+            {unclaimedItems.length === 0 ? (
+              <p className="mt-4 text-[11px] text-slate-300">
+                You don’t currently have any expired or failed listings. Once a
+                transfer listing expires without a buyer (or is marked as
+                failed), it will show up here so you can return the monster to
+                your collection, quick-sell it, or relist it on the market.
+              </p>
+            ) : (
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                {unclaimedItems.map((item) => {
+                  const m = item.userMonster;
+                  const selected =
+                    item.listingId === selectedUnclaimedId;
+
+                  return (
+                    <button
+                      key={item.listingId}
+                      type="button"
+                      onClick={() =>
+                        setSelectedUnclaimedId(item.listingId)
+                      }
+                      className={`text-left rounded-2xl border p-3 bg-slate-900/70 hover:border-emerald-400 transition-colors ${
+                        selected
+                          ? "border-emerald-400 ring-2 ring-emerald-400/60"
+                          : "border-slate-700"
+                      }`}
+                    >
+                      <div className="text-[11px] text-slate-400 mb-1">
+                        {m.position} • {m.club}
+                      </div>
+                      <div className="text-sm font-semibold text-slate-100 truncate">
+                        {m.displayName}
+                      </div>
+                      <div className="text-[11px] text-slate-300 truncate">
+                        {m.realPlayerName}
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-300 flex gap-2">
+                        <span>ATK {m.baseAttack}</span>
+                        <span>MAG {m.baseMagic}</span>
+                        <span>DEF {m.baseDefense}</span>
+                      </div>
+                      <div className="mt-1 text-[10px] text-emerald-300">
+                        Rarity: {m.rarity}
+                      </div>
+                      {item.expiresAt && (
+                        <div className="mt-1 text-[10px] text-slate-500">
+                          Listing expired{" "}
+                          {new Date(
+                            item.expiresAt
+                          ).toLocaleDateString()}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="text-[11px] text-slate-400">
+                {selectedUnclaimedId
+                  ? "Choose an action for the selected monster."
+                  : "Select a monster above to enable the actions."}
+              </div>
+              <div className="flex flex-wrap gap-2 justify-end">
+                <button
+                  type="button"
+                  disabled={!selectedUnclaimedId || resolvingUnclaimed}
+                  onClick={() => handleResolveUnclaimed("RETURN")}
+                  className={`rounded-full px-4 py-2 text-[11px] font-semibold border ${
+                    !selectedUnclaimedId || resolvingUnclaimed
+                      ? "border-slate-700 text-slate-500 cursor-not-allowed"
+                      : "border-slate-600 text-slate-100 hover:border-emerald-300"
+                  }`}
+                >
+                  Return to collection
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedUnclaimedId || resolvingUnclaimed}
+                  onClick={() => handleResolveUnclaimed("QUICK_SELL")}
+                  className={`rounded-full px-4 py-2 text-[11px] font-semibold ${
+                    !selectedUnclaimedId || resolvingUnclaimed
+                      ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                      : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
+                  }`}
+                >
+                  Quick-sell
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedUnclaimedId || resolvingUnclaimed}
+                  onClick={() => handleResolveUnclaimed("RELIST")}
+                  className={`rounded-full px-4 py-2 text-[11px] font-semibold ${
+                    !selectedUnclaimedId || resolvingUnclaimed
+                      ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                      : "bg-sky-400 text-slate-950 hover:bg-sky-300"
+                  }`}
+                >
+                  Relist on market
+                </button>
+              </div>
+            </div>
+
+            {unclaimedError && (
+              <p className="mt-2 text-[11px] text-red-400">
+                {unclaimedError}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Starter pack modal */}
       {showStarterModal && (
@@ -702,18 +942,14 @@ export default function HomePage() {
           onClose={() => setShowStarterModal(false)}
           onOpened={(monsters, coinsAfter) => {
             // increment local starter pack count
-            setStarterPacksOpened(
-              (prev) => (prev ?? 0) + 1
-            );
+            setStarterPacksOpened((prev) => (prev ?? 0) + 1);
 
             const openedCount = monsters.length;
 
             // Update coins + total monsters if we have coinsAfter
             if (typeof coinsAfter === "number") {
               setMe((prev) =>
-                prev
-                  ? { ...prev, coins: coinsAfter }
-                  : prev
+                prev ? { ...prev, coins: coinsAfter } : prev
               );
               setSummary((prev) =>
                 prev
@@ -725,8 +961,7 @@ export default function HomePage() {
                       },
                       monsters: {
                         totalOwned:
-                          (prev.monsters
-                            ?.totalOwned ?? 0) +
+                          (prev.monsters?.totalOwned ?? 0) +
                           openedCount,
                       },
                     }

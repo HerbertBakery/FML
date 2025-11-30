@@ -1,54 +1,112 @@
 // app/api/admin/gameweeks/update-deadline/route.ts
+// or src/app/api/admin/gameweeks/update-deadline/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getUserFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => null);
-  const number = body?.number as number | undefined;
-  const deadlineAtRaw = body?.deadlineAt as string | undefined;
-
-  if (typeof number !== "number" || !Number.isInteger(number) || number < 1 || number > 38) {
-    return NextResponse.json(
-      { error: "Provide a valid gameweek number between 1 and 38." },
-      { status: 400 }
-    );
-  }
-
-  if (!deadlineAtRaw || typeof deadlineAtRaw !== "string") {
-    return NextResponse.json(
-      { error: "deadlineAt must be a non-empty date string." },
-      { status: 400 }
-    );
-  }
-
-  const deadlineDate = new Date(deadlineAtRaw);
-  if (Number.isNaN(deadlineDate.getTime())) {
-    return NextResponse.json(
-      { error: "deadlineAt must be a valid date string (e.g. ISO or datetime-local value)." },
-      { status: 400 }
-    );
-  }
-
   try {
-    // If the GW doesn't exist yet, create it; otherwise update
-    const gameweek = await prisma.gameweek.upsert({
-      where: { number },
-      update: { deadlineAt: deadlineDate },
-      create: {
-        number,
-        name: `Gameweek ${number}`,
-        deadlineAt: deadlineDate,
-        isActive: false,
-      },
+    const user = await getUserFromRequest(req);
+
+    // tighten if you have roles
+    // if (!user || user.role !== "ADMIN") ...
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json();
+
+    // Allow multiple shapes:
+    // { id, deadlineAt }
+    // { id, deadline }
+    // { number, deadlineAt }
+    // { number, deadline }
+    const { id, number } = body as {
+      id?: string;
+      number?: number;
+    };
+
+    const rawDeadline: string | undefined =
+      body.deadlineAt ?? body.deadline;
+
+    if (!id && typeof number !== "number") {
+      return NextResponse.json(
+        {
+          error:
+            "You must provide either 'id' (string) or 'number' (number) in the request body.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!rawDeadline || typeof rawDeadline !== "string") {
+      return NextResponse.json(
+        {
+          error:
+            "Missing or invalid deadline. Provide 'deadline' or 'deadlineAt' as an ISO date string.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const deadlineDate = new Date(rawDeadline);
+    if (isNaN(deadlineDate.getTime())) {
+      return NextResponse.json(
+        {
+          error: `Invalid date format for deadline: '${rawDeadline}'. Expected a valid ISO date string, e.g. '2025-12-31T18:30:00.000Z'.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    let updatedCount = 0;
+
+    if (id) {
+      // Use unique id when provided
+      const updated = await prisma.gameweek.update({
+        where: { id },
+        data: { deadlineAt: deadlineDate },
+      });
+      updatedCount = updated ? 1 : 0;
+    } else if (typeof number === "number") {
+      // Fallback: update all gameweeks with this number
+      const result = await prisma.gameweek.updateMany({
+        where: { number },
+        data: { deadlineAt: deadlineDate },
+      });
+      updatedCount = result.count;
+    }
+
+    if (updatedCount === 0) {
+      return NextResponse.json(
+        {
+          error: id
+            ? `No gameweek found with id '${id}'.`
+            : `No gameweek found with number ${number}.`,
+        },
+        { status: 404 }
+      );
+    }
+
+    // Fetch one updated gameweek (for UI)
+    const gameweek = await prisma.gameweek.findFirst({
+      where: id ? { id } : { number },
     });
 
-    return NextResponse.json({ gameweek });
+    return NextResponse.json({
+      success: true,
+      gameweek,
+    });
   } catch (err) {
-    console.error("Error updating gameweek deadline:", err);
+    console.error("Error in /api/admin/gameweeks/update-deadline:", err);
     return NextResponse.json(
-      { error: "Failed to update gameweek deadline." },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
