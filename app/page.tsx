@@ -1,4 +1,3 @@
-// app/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -114,6 +113,9 @@ export default function HomePage() {
   const [starterMessage, setStarterMessage] = useState<string | null>(null);
   const [showStarterModal, setShowStarterModal] = useState<boolean>(false);
 
+  // NEW: track which templateCodes the user already owns in their collection
+  const [ownedTemplateCodes, setOwnedTemplateCodes] = useState<string[]>([]);
+
   // NEW: expired listings / unclaimed items
   const [unclaimedItems, setUnclaimedItems] = useState<UnclaimedItem[]>([]);
   const [unclaimedError, setUnclaimedError] = useState<string | null>(null);
@@ -145,6 +147,7 @@ export default function HomePage() {
         setSummary(null);
         setStreak(null);
         setStarterPacksOpened(null);
+        setOwnedTemplateCodes([]);
         setUnclaimedItems([]);
         setLoading(false);
         return;
@@ -156,6 +159,7 @@ export default function HomePage() {
         setSummary(null);
         setStreak(null);
         setStarterPacksOpened(null);
+        setOwnedTemplateCodes([]);
         setUnclaimedItems([]);
         setLoading(false);
         return;
@@ -206,15 +210,19 @@ export default function HomePage() {
         setStreak(null);
       }
 
-      // Load starter pack meta (how many free starter packs opened)
+      // Load starter pack meta (how many free starter packs opened) + collection
       const colRes = await fetch("/api/me/collection", {
         credentials: "include",
       });
       if (colRes.ok) {
         const colData: CollectionResponse = await colRes.json();
         setStarterPacksOpened(colData.starterPacksOpened ?? 0);
+        setOwnedTemplateCodes(
+          (colData.monsters || []).map((m) => m.templateCode)
+        );
       } else {
         setStarterPacksOpened(null);
+        setOwnedTemplateCodes([]);
       }
 
       // NEW: load any listings that expired and didn't sell
@@ -248,6 +256,7 @@ export default function HomePage() {
       setStreak(null);
       setStreakError("Could not load streak data.");
       setStarterPacksOpened(null);
+      setOwnedTemplateCodes([]);
       setUnclaimedItems([]);
       setUnclaimedError("Could not load items that didn't sell.");
     } finally {
@@ -939,6 +948,7 @@ export default function HomePage() {
         <PackOpenModal
           packId="starter"
           redirectToSquad={false}
+          ownedTemplateCodes={ownedTemplateCodes}
           onClose={() => setShowStarterModal(false)}
           onOpened={(monsters, coinsAfter) => {
             // increment local starter pack count
