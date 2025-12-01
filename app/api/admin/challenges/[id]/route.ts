@@ -1,54 +1,9 @@
 // app/api/admin/challenges/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getUserFromRequest } from "@/lib/auth";
+import { requireAdminSecret } from "@/lib/adminAuth";
 
 export const runtime = "nodejs";
-
-async function requireUser(req: NextRequest) {
-  const user = await getUserFromRequest(req);
-  if (!user) {
-    throw new Error("NOT_AUTH");
-  }
-  return user;
-}
-
-// GET /api/admin/challenges/:id
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  try {
-    await requireUser(req);
-    const { id } = params;
-
-    const template =
-      await prisma.squadChallengeTemplate.findUnique({
-        where: { id },
-      });
-
-    if (!template) {
-      return NextResponse.json(
-        { error: "Challenge not found." },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({ challenge: template });
-  } catch (err: any) {
-    if (err?.message === "NOT_AUTH") {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
-    }
-    console.error("Admin GET challenge error:", err);
-    return NextResponse.json(
-      { error: "Failed to fetch challenge." },
-      { status: 500 }
-    );
-  }
-}
 
 type UpdateBody = {
   code?: string;
@@ -65,13 +20,51 @@ type UpdateBody = {
   isActive?: boolean;
 };
 
+// GET /api/admin/challenges/:id
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const adminCheck = await requireAdminSecret(req);
+  if (!adminCheck.ok) {
+    return adminCheck.response;
+  }
+
+  try {
+    const { id } = params;
+
+    const template = await prisma.squadChallengeTemplate.findUnique({
+      where: { id },
+    });
+
+    if (!template) {
+      return NextResponse.json(
+        { error: "Challenge not found." },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ challenge: template });
+  } catch (err: any) {
+    console.error("Admin GET challenge error:", err);
+    return NextResponse.json(
+      { error: "Failed to fetch challenge." },
+      { status: 500 }
+    );
+  }
+}
+
 // PUT /api/admin/challenges/:id
 export async function PUT(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const adminCheck = await requireAdminSecret(req);
+  if (!adminCheck.ok) {
+    return adminCheck.response;
+  }
+
   try {
-    await requireUser(req);
     const { id } = params;
 
     let body: UpdateBody = {};
@@ -84,10 +77,9 @@ export async function PUT(
       );
     }
 
-    const existing =
-      await prisma.squadChallengeTemplate.findUnique({
-        where: { id },
-      });
+    const existing = await prisma.squadChallengeTemplate.findUnique({
+      where: { id },
+    });
 
     if (!existing) {
       return NextResponse.json(
@@ -118,8 +110,7 @@ export async function PUT(
       updateData.requiredRarity = body.requiredRarity || null;
     }
     if (body.requiredPosition !== undefined) {
-      updateData.requiredPosition =
-        body.requiredPosition || null;
+      updateData.requiredPosition = body.requiredPosition || null;
     }
     if (body.requiredClub !== undefined) {
       updateData.requiredClub = body.requiredClub || null;
@@ -137,20 +128,13 @@ export async function PUT(
       updateData.isActive = body.isActive;
     }
 
-    const updated =
-      await prisma.squadChallengeTemplate.update({
-        where: { id },
-        data: updateData,
-      });
+    const updated = await prisma.squadChallengeTemplate.update({
+      where: { id },
+      data: updateData,
+    });
 
     return NextResponse.json({ challenge: updated });
   } catch (err: any) {
-    if (err?.message === "NOT_AUTH") {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
-    }
     console.error("Admin PUT challenge error:", err);
 
     if (err?.code === "P2002") {
@@ -173,14 +157,17 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const adminCheck = await requireAdminSecret(req);
+  if (!adminCheck.ok) {
+    return adminCheck.response;
+  }
+
   try {
-    await requireUser(req);
     const { id } = params;
 
-    const existing =
-      await prisma.squadChallengeTemplate.findUnique({
-        where: { id },
-      });
+    const existing = await prisma.squadChallengeTemplate.findUnique({
+      where: { id },
+    });
 
     if (!existing) {
       return NextResponse.json(
@@ -189,23 +176,16 @@ export async function DELETE(
       );
     }
 
-    const updated =
-      await prisma.squadChallengeTemplate.update({
-        where: { id },
-        data: { isActive: false },
-      });
+    const updated = await prisma.squadChallengeTemplate.update({
+      where: { id },
+      data: { isActive: false },
+    });
 
     return NextResponse.json({
       ok: true,
       challenge: updated,
     });
   } catch (err: any) {
-    if (err?.message === "NOT_AUTH") {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
-    }
     console.error("Admin DELETE challenge error:", err);
     return NextResponse.json(
       { error: "Failed to deactivate challenge." },

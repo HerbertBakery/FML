@@ -1,3 +1,4 @@
+// app/admin/tools/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -19,30 +20,28 @@ type CurrentGameweek = {
 };
 
 export default function AdminToolsPage() {
-  // ----- Scoring from FPL -----
-  const [gwForScore, setGwForScore] = useState<string>(""); // empty = use active GW
+  const [adminSecret, setAdminSecret] = useState("");
+  const [unlocked, setUnlocked] = useState(false);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+
+  const [gwForScore, setGwForScore] = useState<string>("");
   const [scoreLoading, setScoreLoading] = useState(false);
   const [scoreResult, setScoreResult] = useState<ApiResponse | null>(null);
 
-  // ----- Current gameweek info -----
   const [currentGw, setCurrentGw] = useState<CurrentGameweek | null>(null);
   const [currentGwLoading, setCurrentGwLoading] = useState(false);
   const [currentGwError, setCurrentGwError] = useState<string | null>(null);
 
-  // ----- Set current gameweek -----
   const [setGwInput, setSetGwInput] = useState<string>("");
   const [setGwLoading, setSetGwLoading] = useState(false);
   const [setGwMessage, setSetGwMessage] = useState<string | null>(null);
   const [setGwErrorMsg, setSetGwErrorMsg] = useState<string | null>(null);
 
-  // ----- Update deadline -----
   const [deadlineGwInput, setDeadlineGwInput] = useState<string>("");
-  const [deadlineInput, setDeadlineInput] = useState<string>(""); // datetime-local string
+  const [deadlineInput, setDeadlineInput] = useState<string>("");
   const [deadlineLoading, setDeadlineLoading] = useState(false);
   const [deadlineMessage, setDeadlineMessage] = useState<string | null>(null);
   const [deadlineErrorMsg, setDeadlineErrorMsg] = useState<string | null>(null);
-
-  // ------------------ Helpers ------------------
 
   async function loadCurrentGameweek() {
     setCurrentGwLoading(true);
@@ -74,8 +73,10 @@ export default function AdminToolsPage() {
   }
 
   useEffect(() => {
-    void loadCurrentGameweek();
-  }, []);
+    if (unlocked) {
+      void loadCurrentGameweek();
+    }
+  }, [unlocked]);
 
   function formatDeadline(deadlineAt: string | null | undefined) {
     if (!deadlineAt) return "—";
@@ -84,9 +85,6 @@ export default function AdminToolsPage() {
     return d.toLocaleString();
   }
 
-  // ------------------ Actions ------------------
-
-  // 1) Score from FPL
   async function handleScoreFromFpl() {
     setScoreLoading(true);
     setScoreResult(null);
@@ -106,7 +104,9 @@ export default function AdminToolsPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-admin-secret": adminSecret,
         },
+        credentials: "include",
         body: JSON.stringify(gameweekNumber ? { gameweekNumber } : {}),
       });
 
@@ -134,7 +134,6 @@ export default function AdminToolsPage() {
     }
   }
 
-  // 2) Set current gameweek (e.g. switch to GW 14)
   async function handleSetCurrentGameweek() {
     setSetGwMessage(null);
     setSetGwErrorMsg(null);
@@ -154,7 +153,10 @@ export default function AdminToolsPage() {
     try {
       const res = await fetch("/api/admin/gameweeks/set-current", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-secret": adminSecret,
+        },
         credentials: "include",
         body: JSON.stringify({ number: parsed }),
       });
@@ -169,7 +171,6 @@ export default function AdminToolsPage() {
         setSetGwMessage(
           `Current gameweek set to ${json?.gameweek?.number ?? parsed}.`
         );
-        // Refresh the current GW info box
         void loadCurrentGameweek();
       }
     } catch {
@@ -179,7 +180,6 @@ export default function AdminToolsPage() {
     }
   }
 
-  // 3) Update deadline of a gameweek
   async function handleUpdateDeadline() {
     setDeadlineMessage(null);
     setDeadlineErrorMsg(null);
@@ -200,14 +200,16 @@ export default function AdminToolsPage() {
       return;
     }
 
-    // datetime-local gives something like "2025-08-01T18:30"
     const deadlineAt = deadlineInput;
 
     setDeadlineLoading(true);
     try {
       const res = await fetch("/api/admin/gameweeks/update-deadline", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-secret": adminSecret,
+        },
         credentials: "include",
         body: JSON.stringify({ number: parsedGw, deadlineAt }),
       });
@@ -222,7 +224,6 @@ export default function AdminToolsPage() {
         setDeadlineMessage(
           `Deadline for GW ${json?.gameweek?.number ?? parsedGw} updated.`
         );
-        // Refresh current GW info box (in case we edited the active one)
         void loadCurrentGameweek();
       }
     } catch {
@@ -232,11 +233,51 @@ export default function AdminToolsPage() {
     }
   }
 
-  // ------------------ UI ------------------
+  function handleUnlock(e: React.FormEvent) {
+    e.preventDefault();
+    setUnlockError(null);
+    if (!adminSecret.trim()) {
+      setUnlockError("Enter the admin password.");
+      return;
+    }
+    setUnlocked(true);
+  }
+
+  if (!unlocked) {
+    return (
+      <main className="max-w-md mx-auto mt-10 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+        <h1 className="text-lg font-semibold mb-2">Admin Tools – Locked</h1>
+        <p className="text-xs text-slate-300 mb-4">
+          Enter the admin password to access gameweek tools.
+        </p>
+        <form onSubmit={handleUnlock} className="space-y-3">
+          <div>
+            <label className="block text-[11px] text-slate-300 mb-1">
+              Admin password
+            </label>
+            <input
+              type="password"
+              value={adminSecret}
+              onChange={(e) => setAdminSecret(e.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-50 outline-none focus:border-emerald-400"
+            />
+          </div>
+          {unlockError && (
+            <p className="text-[11px] text-red-400">{unlockError}</p>
+          )}
+          <button
+            type="submit"
+            className="rounded-full bg-emerald-400 text-slate-950 px-4 py-2 text-xs font-semibold hover:bg-emerald-300"
+          >
+            Unlock
+          </button>
+        </form>
+      </main>
+    );
+  }
 
   return (
     <main className="space-y-6">
-      {/* Header */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
         <h2 className="text-xl font-semibold mb-2">Admin Tools</h2>
         <p className="text-sm text-slate-300">
@@ -244,7 +285,6 @@ export default function AdminToolsPage() {
         </p>
       </section>
 
-      {/* Current GW info */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-2">
         <h3 className="text-sm font-semibold text-slate-100 mb-1">
           Current gameweek (from DB)
@@ -276,15 +316,13 @@ export default function AdminToolsPage() {
         )}
       </section>
 
-      {/* Set current GW */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
         <h3 className="text-sm font-semibold text-slate-100">
           Set current active gameweek
         </h3>
         <p className="text-xs text-slate-300 mb-1">
           Use this to switch which gameweek is considered &quot;current&quot; for
-          squad locking and (if no GW is passed) scoring from FPL. For example, set this
-          to <span className="font-mono">14</span> to start at Gameweek 14.
+          squad locking and (if no GW is passed) scoring from FPL.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
@@ -322,7 +360,6 @@ export default function AdminToolsPage() {
         )}
       </section>
 
-      {/* Update deadline */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
         <h3 className="text-sm font-semibold text-slate-100">
           Update gameweek deadline
@@ -378,15 +415,12 @@ export default function AdminToolsPage() {
         )}
       </section>
 
-      {/* Score from FPL (your existing section, slightly renamed vars) */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-4">
         <h3 className="text-sm font-semibold text-slate-100">
           Score gameweek from FPL data
         </h3>
         <p className="text-xs text-slate-300">
-          Fetches official FPL live stats and applies scoring + evolution. If you leave
-          the gameweek field empty, it will use the <strong>current active</strong>{" "}
-          gameweek from the database.
+          Fetches official FPL live stats and applies scoring + evolution.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end">

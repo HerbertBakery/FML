@@ -11,7 +11,7 @@ type Challenge = {
   description: string;
   minMonsters: number;
   minRarity: string | null;
-  requiredRarity: string | null; // NEW: exact rarity requirement
+  requiredRarity: string | null;
   requiredPosition: string | null;
   requiredClub: string | null;
   rewardType: string;
@@ -33,6 +33,11 @@ type SingleResponse = {
 
 export default function AdminChallengesPage() {
   const router = useRouter();
+
+  const [adminSecret, setAdminSecret] = useState("");
+  const [unlocked, setUnlocked] = useState(false);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -44,13 +49,12 @@ export default function AdminChallengesPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Form state
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [minMonsters, setMinMonsters] = useState<number>(3);
   const [minRarity, setMinRarity] = useState("");
-  const [requiredRarity, setRequiredRarity] = useState(""); // NEW
+  const [requiredRarity, setRequiredRarity] = useState("");
   const [requiredPosition, setRequiredPosition] = useState("");
   const [requiredClub, setRequiredClub] = useState("");
   const [rewardType, setRewardType] = useState("coins");
@@ -65,7 +69,7 @@ export default function AdminChallengesPage() {
     setDescription("");
     setMinMonsters(3);
     setMinRarity("");
-    setRequiredRarity(""); // NEW
+    setRequiredRarity("");
     setRequiredPosition("");
     setRequiredClub("");
     setRewardType("coins");
@@ -82,6 +86,9 @@ export default function AdminChallengesPage() {
     try {
       const res = await fetch("/api/admin/challenges", {
         credentials: "include",
+        headers: {
+          "x-admin-secret": adminSecret,
+        },
       });
       const json = (await res.json()) as ListResponse;
 
@@ -92,7 +99,7 @@ export default function AdminChallengesPage() {
       }
 
       setChallenges(json.challenges || []);
-    } catch (err) {
+    } catch {
       setError("Failed to load challenges.");
       setChallenges([]);
     } finally {
@@ -101,8 +108,10 @@ export default function AdminChallengesPage() {
   }
 
   useEffect(() => {
-    loadChallenges();
-  }, []);
+    if (unlocked) {
+      void loadChallenges();
+    }
+  }, [unlocked]);
 
   function fillFormFromChallenge(c: Challenge) {
     setSelectedId(c.id);
@@ -111,14 +120,12 @@ export default function AdminChallengesPage() {
     setDescription(c.description || "");
     setMinMonsters(c.minMonsters || 1);
     setMinRarity(c.minRarity || "");
-    setRequiredRarity(c.requiredRarity || ""); // NEW
+    setRequiredRarity(c.requiredRarity || "");
     setRequiredPosition(c.requiredPosition || "");
     setRequiredClub(c.requiredClub || "");
     setRewardType(c.rewardType || "coins");
     setRewardValue(c.rewardValue || "");
-    setIsRepeatable(
-      typeof c.isRepeatable === "boolean" ? c.isRepeatable : true
-    );
+    setIsRepeatable(typeof c.isRepeatable === "boolean" ? c.isRepeatable : true);
     setIsActive(c.isActive);
     setFormError(null);
     setFormSuccess(null);
@@ -135,6 +142,9 @@ export default function AdminChallengesPage() {
     try {
       const res = await fetch(`/api/admin/challenges/${id}`, {
         credentials: "include",
+        headers: {
+          "x-admin-secret": adminSecret,
+        },
       });
       const json = (await res.json()) as SingleResponse;
       if (!res.ok || !json.challenge) {
@@ -142,7 +152,7 @@ export default function AdminChallengesPage() {
         return;
       }
       fillFormFromChallenge(json.challenge);
-    } catch (err) {
+    } catch {
       setFormError("Failed to load challenge.");
     }
   }
@@ -171,9 +181,7 @@ export default function AdminChallengesPage() {
           Number.isFinite(minMonsters as any) && minMonsters > 0
             ? minMonsters
             : 1,
-        // Keep existing minRarity behavior
         minRarity: minRarity.trim() || null,
-        // NEW: exact rarity (if set, your API/validator can treat this as "must match exactly")
         requiredRarity: requiredRarity.trim() || null,
         requiredPosition: requiredPosition.trim() || null,
         requiredClub: requiredClub.trim() || null,
@@ -193,26 +201,24 @@ export default function AdminChallengesPage() {
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
+          "x-admin-secret": adminSecret,
         },
         body: JSON.stringify(body),
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => null);
 
       if (!res.ok) {
         setFormError(json?.error || "Failed to save challenge.");
         return;
       }
 
-      setFormSuccess(
-        selectedId ? "Challenge updated." : "Challenge created."
-      );
+      setFormSuccess(selectedId ? "Challenge updated." : "Challenge created.");
       await loadChallenges();
       if (!selectedId && json?.challenge?.id) {
-        // Switch into edit mode for the new one
         fillFormFromChallenge(json.challenge);
       }
-    } catch (err) {
+    } catch {
       setFormError("Failed to save challenge.");
     } finally {
       setSaving(false);
@@ -225,25 +231,24 @@ export default function AdminChallengesPage() {
     setFormSuccess(null);
     setDeleting(true);
     try {
-      const res = await fetch(
-        `/api/admin/challenges/${selectedId}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        }
-      );
-      const json = await res.json();
+      const res = await fetch(`/api/admin/challenges/${selectedId}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: {
+          "x-admin-secret": adminSecret,
+        },
+      });
+      const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
         setFormError(json?.error || "Failed to deactivate challenge.");
         return;
       }
       setFormSuccess("Challenge deactivated.");
       await loadChallenges();
-      // Keep it in form but show inactive
       if (json.challenge) {
         fillFormFromChallenge(json.challenge);
       }
-    } catch (err) {
+    } catch {
       setFormError("Failed to deactivate challenge.");
     } finally {
       setDeleting(false);
@@ -260,6 +265,51 @@ export default function AdminChallengesPage() {
     }
     if (parts.length === 0) return "any rarity";
     return parts.join(" • ");
+  }
+
+  function handleUnlock(e: React.FormEvent) {
+    e.preventDefault();
+    setUnlockError(null);
+    if (!adminSecret.trim()) {
+      setUnlockError("Enter the admin password.");
+      return;
+    }
+    setUnlocked(true);
+  }
+
+  if (!unlocked) {
+    return (
+      <main className="max-w-md mx-auto mt-10 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+        <h1 className="text-lg font-semibold mb-2">
+          Admin – Squad Builder Challenges (Locked)
+        </h1>
+        <p className="text-xs text-slate-300 mb-4">
+          Enter the admin password to manage SBC templates.
+        </p>
+        <form onSubmit={handleUnlock} className="space-y-3">
+          <div>
+            <label className="block text-[11px] text-slate-300 mb-1">
+              Admin password
+            </label>
+            <input
+              type="password"
+              value={adminSecret}
+              onChange={(e) => setAdminSecret(e.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-50 outline-none focus:border-emerald-400"
+            />
+          </div>
+          {unlockError && (
+            <p className="text-[11px] text-red-400">{unlockError}</p>
+          )}
+          <button
+            type="submit"
+            className="rounded-full bg-emerald-400 text-slate-950 px-4 py-2 text-xs font-semibold hover:bg-emerald-300"
+          >
+            Unlock
+          </button>
+        </form>
+      </main>
+    );
   }
 
   return (
@@ -286,14 +336,9 @@ export default function AdminChallengesPage() {
             New Challenge
           </button>
         </div>
-        {error && (
-          <p className="mt-2 text-xs text-red-400">
-            {error}
-          </p>
-        )}
+        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
       </section>
 
-      {/* List of challenges */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
         <h2 className="text-sm font-semibold text-slate-100 mb-2">
           Existing Challenges
@@ -319,9 +364,7 @@ export default function AdminChallengesPage() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <p className="font-semibold text-slate-100">
-                      {c.name}
-                    </p>
+                    <p className="font-semibold text-slate-100">{c.name}</p>
                     <p className="text-[11px] text-slate-400">
                       {c.code} • Reward: {c.rewardType}({c.rewardValue}) • min{" "}
                       {c.minMonsters}
@@ -349,23 +392,17 @@ export default function AdminChallengesPage() {
         )}
       </section>
 
-      {/* Form */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
         <h2 className="text-sm font-semibold text-slate-100 mb-3">
           {selectedId ? "Edit Challenge" : "Create New Challenge"}
         </h2>
 
-        {formError && (
-          <p className="mb-2 text-xs text-red-400">{formError}</p>
-        )}
+        {formError && <p className="mb-2 text-xs text-red-400">{formError}</p>}
         {formSuccess && (
           <p className="mb-2 text-xs text-emerald-300">{formSuccess}</p>
         )}
 
-        <form
-          onSubmit={handleSave}
-          className="grid gap-3 sm:grid-cols-2"
-        >
+        <form onSubmit={handleSave} className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <label className="text-[11px] text-slate-300">Code</label>
             <input
@@ -392,9 +429,7 @@ export default function AdminChallengesPage() {
           </div>
 
           <div className="space-y-1 sm:col-span-2">
-            <label className="text-[11px] text-slate-300">
-              Description
-            </label>
+            <label className="text-[11px] text-slate-300">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -404,9 +439,7 @@ export default function AdminChallengesPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] text-slate-300">
-              Min Monsters
-            </label>
+            <label className="text-[11px] text-slate-300">Min Monsters</label>
             <input
               type="number"
               min={1}
@@ -418,7 +451,6 @@ export default function AdminChallengesPage() {
             />
           </div>
 
-          {/* Min rarity (existing behavior) */}
           <div className="space-y-1">
             <label className="text-[11px] text-slate-300">
               Min Rarity (optional)
@@ -439,7 +471,6 @@ export default function AdminChallengesPage() {
             </p>
           </div>
 
-          {/* NEW: exact required rarity */}
           <div className="space-y-1">
             <label className="text-[11px] text-slate-300">
               Required Rarity (exact, optional)
@@ -456,9 +487,7 @@ export default function AdminChallengesPage() {
               <option value="LEGENDARY">LEGENDARY</option>
             </select>
             <p className="text-[10px] text-slate-500">
-              If set, only monsters of exactly this rarity are allowed
-              (e.g. "only COMMONs"). Your validation can treat this as
-              overriding Min Rarity.
+              If set, only monsters of exactly this rarity are allowed.
             </p>
           </div>
 
@@ -492,9 +521,7 @@ export default function AdminChallengesPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] text-slate-300">
-              Reward Type
-            </label>
+            <label className="text-[11px] text-slate-300">Reward Type</label>
             <select
               value={rewardType}
               onChange={(e) => setRewardType(e.target.value)}
@@ -510,9 +537,7 @@ export default function AdminChallengesPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] text-slate-300">
-              Reward Value
-            </label>
+            <label className="text-[11px] text-slate-300">Reward Value</label>
             <input
               value={rewardValue}
               onChange={(e) => setRewardValue(e.target.value)}
@@ -529,10 +554,7 @@ export default function AdminChallengesPage() {
               onChange={(e) => setIsRepeatable(e.target.checked)}
               className="h-3 w-3 rounded border-slate-600 bg-slate-950"
             />
-            <label
-              htmlFor="isRepeatable"
-              className="text-[11px] text-slate-300"
-            >
+            <label htmlFor="isRepeatable" className="text-[11px] text-slate-300">
               Repeatable (users can complete this challenge multiple times)
             </label>
           </div>
@@ -545,10 +567,7 @@ export default function AdminChallengesPage() {
               onChange={(e) => setIsActive(e.target.checked)}
               className="h-3 w-3 rounded border-slate-600 bg-slate-950"
             />
-            <label
-              htmlFor="isActive"
-              className="text-[11px] text-slate-300"
-            >
+            <label htmlFor="isActive" className="text-[11px] text-slate-300">
               Active (visible on public SBC page)
             </label>
           </div>
