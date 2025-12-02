@@ -179,7 +179,7 @@ export default function SquadPage() {
     load();
   }, []);
 
-  // When gwIndex changes, load that gameweek’s locked squad
+  // When gwIndex changes, load that gameweek’s locked squad (for history view)
   useEffect(() => {
     if (gwIndex === null || gwHistory.length === 0) return;
 
@@ -243,6 +243,7 @@ export default function SquadPage() {
     });
   }
 
+  // Save default squad + submit/overwrite entry for current gameweek
   async function handleSave() {
     setError(null);
     setSuccess(null);
@@ -256,6 +257,7 @@ export default function SquadPage() {
 
     setSaving(true);
     try {
+      // 1) Save / overwrite your default 6-monster squad
       const squadRes = await fetch("/api/squad", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -265,10 +267,11 @@ export default function SquadPage() {
 
       const squadData = await squadRes.json().catch(() => null);
       if (!squadRes.ok) {
-        setError(squadData?.error || "Failed to save squad. Please try again.");
+        setError(squadData?.error || "Failed to save your default squad.");
         return;
       }
 
+      // 2) Lock / overwrite your entry for the *current* gameweek
       const gwRes = await fetch("/api/gameweeks/entry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -277,14 +280,22 @@ export default function SquadPage() {
       });
 
       const gwData = await gwRes.json().catch(() => null);
+
       if (!gwRes.ok) {
+        // This will surface "Deadline has passed for the current gameweek."
         setError(
-          gwData?.error || "Squad saved but failed to lock for the current gameweek."
+          gwData?.error ||
+            "Your squad was saved, but we couldn’t update it for the current gameweek."
         );
         return;
       }
 
-      setSuccess("Squad saved and locked for the current gameweek. You’re ready!");
+      setSuccess(
+        "Squad saved for the current gameweek. You can still make changes and resubmit until the deadline."
+      );
+
+      // Optional: refresh history / GW squad after save if you want
+      // but not required for pitch to update
     } catch {
       setError("Something went wrong saving and locking your squad.");
     } finally {
@@ -346,25 +357,22 @@ export default function SquadPage() {
     [filteredCollection]
   );
 
-  const selectedByLine = useMemo(
-    () => ({
-      GK: selectedMonsters.filter((m) => m.position === "GK"),
-      DEF: selectedMonsters.filter((m) => m.position === "DEF"),
-      MID: selectedMonsters.filter((m) => m.position === "MID"),
-      FWD: selectedMonsters.filter((m) => m.position === "FWD"),
-    }),
-    [selectedMonsters]
-  );
-
   const hasGwHistory = gwHistory.length > 0 && gwIndex !== null;
 
-  // Decide what the pitch uses:
-  // - If we have a GW squad with monsters, show that (with GW points)
-  // - Otherwise, show the current selected squad (builder)
-  const pitchSource: PitchMonster[] =
-    gwSquad && gwSquad.monsters && gwSquad.monsters.length > 0
-      ? gwSquad.monsters
-      : selectedMonsters;
+  // 👉 New logic: decide what the pitch uses.
+  // - Latest GW (default view on this page): always show live selection.
+  // - When you navigate BACK with ← to an older GW: show the locked squad for that GW.
+  const viewingLatestGw =
+    hasGwHistory && gwIndex !== null && gwIndex === gwHistory.length - 1;
+
+  const hasLockedGwSquad =
+    gwSquad && gwSquad.monsters && gwSquad.monsters.length > 0;
+
+  const shouldUseLockedGw = hasLockedGwSquad && !viewingLatestGw;
+
+  const pitchSource: PitchMonster[] = shouldUseLockedGw
+    ? gwSquad!.monsters
+    : selectedMonsters;
 
   const pitchByLine = useMemo(() => {
     const gk: PitchMonster[] = [];
@@ -430,7 +438,9 @@ export default function SquadPage() {
   }
 
   const hasEnoughPlayers = collection.length >= maxPlayers;
-  const showGwOnPitch = !!(gwSquad && gwSquad.monsters && gwSquad.monsters.length > 0);
+
+  // Only show GW total / header as "history" when looking at an older GW
+  const showGwOnPitch = shouldUseLockedGw && !!gwSquad?.gameweek;
   const pitchTotalPoints = showGwOnPitch ? gwSquad!.totalPoints : 0;
 
   return (
@@ -514,7 +524,7 @@ export default function SquadPage() {
                     : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
                 }`}
               >
-                {saving ? "Saving & locking..." : "Save Squad & Lock for Gameweek"}
+                {saving ? "Saving..." : "Save Squad for Current Gameweek"}
               </button>
             </section>
 
@@ -525,20 +535,16 @@ export default function SquadPage() {
                   <h3 className="text-sm font-semibold text-emerald-100">
                     Pitch view
                   </h3>
-                  {showGwOnPitch && gwSquad?.gameweek ? (
+                  {showGwOnPitch ? (
                     <p className="text-[11px] text-emerald-200">
-                      Gameweek {gwSquad.gameweek.number}{" "}
-                      {gwSquad.gameweek.name ? `– ${gwSquad.gameweek.name}` : ""}
-                    </p>
-                  ) : hasGwHistory ? (
-                    <p className="text-[11px] text-emerald-200">
-                      No locked squad for this gameweek yet – showing your current
-                      selection.
+                      Gameweek {gwSquad!.gameweek!.number}{" "}
+                      {gwSquad!.gameweek!.name ? `– ${gwSquad!.gameweek!.name}` : ""}{" "}
+                      (locked view)
                     </p>
                   ) : (
                     <p className="text-[11px] text-emerald-200">
-                      Once you have locked a gameweek, you’ll see its points directly on
-                      this pitch.
+                      Showing your current selection for the active gameweek. Changes
+                      here update live as you pick or remove monsters.
                     </p>
                   )}
                   {gwLoading && (
