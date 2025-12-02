@@ -25,13 +25,26 @@ export async function GET(
       where: { id: monsterId },
       include: {
         user: true, // current owner
-        // IMPORTANT: use plural relation name, and filter active listings
         marketListings: {
           where: { isActive: true },
         },
         historyEvents: {
           include: {
             actor: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+        // 🔥 NEW: any chip assignments for this monster
+        chipAssignments: {
+          include: {
+            userChip: {
+              include: {
+                template: true,
+              },
+            },
+            gameweek: true,
           },
           orderBy: {
             createdAt: "desc",
@@ -52,6 +65,30 @@ export async function GET(
       monster.marketListings && monster.marketListings.length > 0
         ? monster.marketListings[0]
         : null;
+
+    // Map chip assignments into a clean DTO
+    const chipAssignments = (monster.chipAssignments ?? []).map((asgn) => ({
+      id: asgn.id,
+      gameweekId: asgn.gameweekId,
+      gameweekNumber: asgn.gameweek?.number ?? null,
+      createdAt: asgn.createdAt,
+      resolvedAt: asgn.resolvedAt,
+      wasSuccessful: asgn.wasSuccessful,
+      userChip: {
+        id: asgn.userChip.id,
+        isConsumed: asgn.userChip.isConsumed,
+        template: {
+          id: asgn.userChip.template.id,
+          code: asgn.userChip.template.code,
+          name: asgn.userChip.template.name,
+          description: asgn.userChip.template.description,
+          conditionType: asgn.userChip.template.conditionType,
+          minRarity: asgn.userChip.template.minRarity,
+          maxRarity: asgn.userChip.template.maxRarity,
+          allowedPositions: asgn.userChip.template.allowedPositions,
+        },
+      },
+    }));
 
     const dto = {
       id: monster.id,
@@ -104,6 +141,8 @@ export async function GET(
           username: ev.actor.username,
         },
       })),
+
+      chipAssignments,
     };
 
     return NextResponse.json({ monster: dto });

@@ -66,6 +66,8 @@ type RawPlayer = {
   teamName: string;
   teamShortName: string;
   photo?: string;
+  // NEW: minutes from the first 13 GWs (added by your script)
+  minutesFirst13?: number;
 };
 
 const rawTeams = monstersData as RawTeam[];

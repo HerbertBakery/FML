@@ -4,6 +4,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import MonsterChipBadge from "@/components/MonsterChipBadge";
 
 export type MonsterCardMonster = {
   displayName: string;
@@ -17,12 +18,18 @@ export type MonsterCardMonster = {
   evolutionLevel?: number;
 
   // visual / edition info
-  artUrl?: string;        // main card art (static or animated)
-  hoverArtUrl?: string;   // optional alt art on hover
-  setCode?: string;       // e.g. "BASE", "CHRISTMAS_TERRORS_2025"
-  editionType?: string;   // "BASE" | "THEMED" | "LIMITED" (for badges if needed)
-  serialNumber?: number;  // e.g. 23 (for #23/100)
-  editionLabel?: string;  // e.g. "1 of 100", "Founders Edition"
+  artUrl?: string; // main card art (static or animated)
+  hoverArtUrl?: string; // optional alt art on hover
+  setCode?: string; // e.g. "BASE", "CHRISTMAS_TERRORS_2025"
+  editionType?: string; // "BASE" | "THEMED" | "LIMITED" (for badges if needed)
+  serialNumber?: number; // e.g. 23 (for #23/100)
+  editionLabel?: string; // e.g. "1 of 100", "Founders Edition"
+};
+
+export type ActiveChipInfo = {
+  name: string;
+  code: string;
+  gameweekNumber: number | null;
 };
 
 type MonsterCardProps = {
@@ -36,6 +43,10 @@ type MonsterCardProps = {
    * If provided, a "View details" link will appear at the bottom of the card.
    */
   detailHref?: string;
+  /**
+   * 🔥 NEW: If this monster has an active chip, show a badge.
+   */
+  activeChip?: ActiveChipInfo | null;
 };
 
 function getRarityClasses(rarityRaw: string | undefined) {
@@ -80,6 +91,7 @@ export default function MonsterCard({
   rightBadge,
   children,
   detailHref,
+  activeChip,
 }: MonsterCardProps) {
   const { border, background, badge } = getRarityClasses(monster.rarity);
 
@@ -123,32 +135,41 @@ export default function MonsterCard({
           </div>
         )}
 
-        {/* Name on its own line, rarity/rightBadge on the next line, left-aligned */}
+        {/* Name + rarity/chip */}
         <div className="mb-1">
           <span className="font-semibold block">
             {monster.displayName}
           </span>
-          <div className="mt-0.5">
-            {rightBadge ? (
-              <span className="text-[10px]">{rightBadge}</span>
-            ) : (
-              <span
-                className={`text-[10px] uppercase font-semibold ${badge}`}
-              >
-                {monster.rarity}
-              </span>
-            )}
-          </div>
+
+          {/* 🔥 Active chip badge (if any) */}
+          {activeChip ? (
+            <div className="mt-0.5">
+              <MonsterChipBadge
+                name={activeChip.name}
+                code={activeChip.code}
+                gameweekNumber={activeChip.gameweekNumber}
+              />
+            </div>
+          ) : (
+            <div className="mt-0.5">
+              {rightBadge ? (
+                <span className="text-[10px]">{rightBadge}</span>
+              ) : (
+                <span
+                  className={`text-[10px] uppercase font-semibold ${badge}`}
+                >
+                  {monster.rarity}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <p className="text-[11px] text-slate-300">
           {monster.realPlayerName} • {monster.club}
         </p>
 
-        <p className="text-[11px] text-slate-400 mt-1">
-          {monster.position} • ATK {monster.baseAttack} • MAG{" "}
-          {monster.baseMagic} • DEF {monster.baseDefense}
-        </p>
+        {/* 🔥 ATK / MAG / DEF line removed as requested */}
 
         {typeof monster.evolutionLevel === "number" && (
           <p className="text-[10px] text-emerald-300 mt-1">

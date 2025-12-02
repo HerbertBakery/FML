@@ -34,7 +34,7 @@ export default function RootLayout({
               {/* Main tabs + auth */}
               <div className="flex flex-col items-end gap-2">
                 <nav className="flex flex-wrap items-center justify-end gap-2 text-[11px]">
-                  {/* NEW: Home goes first, back to dashboard */}
+                  {/* Home */}
                   <Link
                     href="/"
                     className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
@@ -49,7 +49,7 @@ export default function RootLayout({
                     My Squads
                   </Link>
 
-                  {/* Renamed label only: still points to /leaderboards for now */}
+                  {/* Leagues (leaderboards) */}
                   <Link
                     href="/leaderboards"
                     className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
@@ -85,6 +85,14 @@ export default function RootLayout({
                     className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
                   >
                     SBCs
+                  </Link>
+
+                  {/* 🔥 Evolution -> chips assignment page */}
+                  <Link
+                    href="/chips"
+                    className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+                  >
+                    Evolution
                   </Link>
                 </nav>
 

@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import MonsterChipBadge from "@/components/MonsterChipBadge";
 
 type ApiHistoryItem = {
   id: string;
@@ -12,6 +13,29 @@ type ApiHistoryItem = {
     id: string;
     email: string;
     username: string | null;
+  };
+};
+
+type ApiChipAssignment = {
+  id: string;
+  gameweekId: string | null;
+  gameweekNumber: number | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  wasSuccessful: boolean | null;
+  userChip: {
+    id: string;
+    isConsumed: boolean;
+    template: {
+      id: string;
+      code: string;
+      name: string;
+      description: string;
+      conditionType: string;
+      minRarity: string | null;
+      maxRarity: string | null;
+      allowedPositions: string | null;
+    };
   };
 };
 
@@ -48,6 +72,9 @@ type ApiMonster = {
     price?: number;
   };
   history: ApiHistoryItem[];
+
+  // 🔥 NEW: chip assignments from the API
+  chipAssignments?: ApiChipAssignment[];
 };
 
 type DetailApiResponse = {
@@ -88,6 +115,17 @@ type HistoryEvent = {
   actorUsername?: string | null;
 };
 
+type ChipAssignment = {
+  id: string;
+  gameweekNumber: number | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  wasSuccessful: boolean | null;
+  chipName: string;
+  chipCode: string;
+  chipDescription: string;
+};
+
 type PriceHistoryEvent = {
   id: string;
   price: number;
@@ -120,10 +158,20 @@ export default function MonsterDetailModal({
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // NEW: chip assignments
+  const [chipAssignments, setChipAssignments] = useState<
+    ChipAssignment[]
+  >([]);
+
   // NEW: market price history
-  const [priceHistory, setPriceHistory] = useState<PriceHistoryEvent[]>([]);
-  const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
-  const [priceHistoryError, setPriceHistoryError] = useState<string | null>(null);
+  const [priceHistory, setPriceHistory] = useState<PriceHistoryEvent[]>(
+    []
+  );
+  const [priceHistoryLoading, setPriceHistoryLoading] =
+    useState(false);
+  const [priceHistoryError, setPriceHistoryError] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,6 +181,7 @@ export default function MonsterDetailModal({
       setError(null);
       setPriceHistory([]);
       setPriceHistoryError(null);
+      setChipAssignments([]);
 
       try {
         const res = await fetch(`/api/monsters/${monsterId}`, {
@@ -143,9 +192,12 @@ export default function MonsterDetailModal({
 
         if (!res.ok || data.error) {
           if (!cancelled) {
-            setError(data.error || "Failed to load monster details.");
+            setError(
+              data.error || "Failed to load monster details."
+            );
             setMonster(null);
             setHistory([]);
+            setChipAssignments([]);
           }
           return;
         }
@@ -155,6 +207,7 @@ export default function MonsterDetailModal({
             setError("Monster not found.");
             setMonster(null);
             setHistory([]);
+            setChipAssignments([]);
           }
           return;
         }
@@ -197,12 +250,27 @@ export default function MonsterDetailModal({
               actorUsername: h.actor?.username ?? null,
             }))
           );
+
+          // 🔥 Map chip assignments
+          setChipAssignments(
+            (apiMonster.chipAssignments || []).map((a) => ({
+              id: a.id,
+              gameweekNumber: a.gameweekNumber,
+              createdAt: a.createdAt,
+              resolvedAt: a.resolvedAt,
+              wasSuccessful: a.wasSuccessful,
+              chipName: a.userChip.template.name,
+              chipCode: a.userChip.template.code,
+              chipDescription: a.userChip.template.description,
+            }))
+          );
         }
       } catch {
         if (!cancelled) {
           setError("Failed to load monster details.");
           setMonster(null);
           setHistory([]);
+          setChipAssignments([]);
         }
       } finally {
         if (!cancelled) {
@@ -240,7 +308,9 @@ export default function MonsterDetailModal({
 
         if (!res.ok || data.error) {
           if (!cancelled) {
-            setPriceHistoryError(data.error || "Failed to load price history.");
+            setPriceHistoryError(
+              data.error || "Failed to load price history."
+            );
             setPriceHistory([]);
           }
           return;
@@ -268,7 +338,9 @@ export default function MonsterDetailModal({
     };
   }, [monster?.templateCode]);
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleBackdropClick = (
+    e: React.MouseEvent<HTMLDivElement>
+  ) => {
     // Close when clicking the dark backdrop, but not the panel itself
     if (e.target === e.currentTarget) {
       onClose();
@@ -279,9 +351,15 @@ export default function MonsterDetailModal({
   const averagePrice =
     priceHistory.length > 0
       ? Math.round(
-          priceHistory.reduce((sum, h) => sum + h.price, 0) / priceHistory.length
+          priceHistory.reduce((sum, h) => sum + h.price, 0) /
+            priceHistory.length
         )
       : null;
+
+  // 🔥 Active chip = first unresolved assignment
+  const activeChip = chipAssignments.find(
+    (c) => c.resolvedAt === null
+  );
 
   return (
     <div
@@ -390,6 +468,23 @@ export default function MonsterDetailModal({
                         special action and is no longer active.
                       </p>
                     )}
+
+                    {/* 🔥 Active chip display */}
+                    {activeChip && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-[11px] text-slate-300">
+                          Active evolution chip:
+                        </p>
+                        <MonsterChipBadge
+                          name={activeChip.chipName}
+                          code={activeChip.chipCode}
+                          gameweekNumber={activeChip.gameweekNumber}
+                        />
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Condition: {activeChip.chipDescription}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -415,23 +510,75 @@ export default function MonsterDetailModal({
                             {event.action}
                           </span>
                           <span className="text-[10px] text-slate-500">
-                            {new Date(event.createdAt).toLocaleString()}
+                            {new Date(
+                              event.createdAt
+                            ).toLocaleString()}
                           </span>
                         </div>
                         <p className="mt-0.5 text-[11px] text-slate-200">
                           {event.description}
                         </p>
-                        {(event.actorEmail || event.actorUsername) && (
+                        {(event.actorEmail ||
+                          event.actorUsername) && (
                           <p className="mt-0.5 text-[10px] text-slate-400">
                             By{" "}
                             <span className="font-mono text-slate-200">
-                              {event.actorUsername || event.actorEmail}
+                              {event.actorUsername ||
+                                event.actorEmail}
                             </span>
                           </p>
                         )}
                       </li>
                     ))}
                   </ul>
+                )}
+              </div>
+
+              {/* 🔥 Chip history */}
+              <div className="mt-3">
+                <h3 className="text-[11px] font-semibold text-slate-200 mb-1">
+                  Chip history
+                </h3>
+                {chipAssignments.length === 0 ? (
+                  <p className="text-[11px] text-slate-400">
+                    No chip history recorded yet.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {chipAssignments.map((asgn) => (
+                      <div
+                        key={asgn.id}
+                        className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <MonsterChipBadge
+                            name={asgn.chipName}
+                            code={asgn.chipCode}
+                            gameweekNumber={asgn.gameweekNumber}
+                          />
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full border 
+                              ${
+                                asgn.wasSuccessful === true
+                                  ? "border-emerald-500/60 text-emerald-300 bg-emerald-950/30"
+                                  : asgn.wasSuccessful === false
+                                  ? "border-rose-500/60 text-rose-300 bg-rose-950/30"
+                                  : "border-slate-500/60 text-slate-300 bg-slate-900/40"
+                              }`}
+                          >
+                            {asgn.wasSuccessful === true
+                              ? "Success"
+                              : asgn.wasSuccessful === false
+                              ? "Failed"
+                              : "Pending"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-slate-300">
+                          {asgn.chipDescription}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -454,7 +601,8 @@ export default function MonsterDetailModal({
                   !priceHistoryError &&
                   priceHistory.length === 0 && (
                     <p className="text-[11px] text-slate-400">
-                      No marketplace trades recorded yet for this monster template.
+                      No marketplace trades recorded yet for this
+                      monster template.
                     </p>
                   )}
                 {!priceHistoryLoading &&
@@ -463,8 +611,8 @@ export default function MonsterDetailModal({
                     <div className="space-y-1.5">
                       {averagePrice !== null && (
                         <p className="text-[11px] text-emerald-300">
-                          Average sale price (last {priceHistory.length}):
-                          {" "}
+                          Average sale price (last{" "}
+                          {priceHistory.length}):{" "}
                           <span className="font-mono font-semibold">
                             {averagePrice}
                           </span>{" "}
@@ -481,8 +629,12 @@ export default function MonsterDetailModal({
                               {h.price} coins
                             </span>
                             <span className="text-slate-500">
-                              {new Date(h.createdAt).toLocaleDateString()}{" "}
-                              {new Date(h.createdAt).toLocaleTimeString([], {
+                              {new Date(
+                                h.createdAt
+                              ).toLocaleDateString()}{" "}
+                              {new Date(
+                                h.createdAt
+                              ).toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
                               })}

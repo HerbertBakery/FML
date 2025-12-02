@@ -8,9 +8,8 @@
 // - Maps FPL "code" to our UserMonster.templateCode.
 // - Updates per-monster career totals (goals, assists, CS, fantasy points).
 // - Aggregates per-user gameweek totals into UserGameweekScore.
-//
-// IMPORTANT: This assumes your UserMonster.templateCode is the FPL "code" field,
-// which is exactly how we set it when opening packs (templateCode: String(p.code)).
+// - Applies rarity + evolution multipliers to FPL points.
+// - Applies chip-based evolution and blank-based devolution.
 
 import { prisma } from "@/lib/db";
 
@@ -56,7 +55,135 @@ export type PlayerPerformance = {
   assists: number;
   cleanSheets: number;
   totalPoints: number;
+  minutes: number;
+  saves: number;
+  pensSaved: number;
 };
+
+// ---------- Evo + rarity helpers ----------
+
+// Max evolution levels per rarity:
+// COMMON:    max 1
+// RARE:      max 2
+// EPIC:      max 3
+// LEGENDARY: max 4
+// MYTHICAL:  fixed (no evo changes for now)
+function getMaxEvoForRarity(rarityRaw: string | null | undefined): number {
+  const rarity = (rarityRaw || "").toUpperCase().trim();
+  switch (rarity) {
+    case "COMMON":
+      return 1;
+    case "RARE":
+      return 2;
+    case "EPIC":
+      return 3;
+    case "LEGENDARY":
+      return 4;
+    case "MYTHICAL":
+      return 0; // treated as fixed; multiplier handles their power
+    default:
+      return 1;
+  }
+}
+
+/**
+ * Evolution multiplier based on rarity + evolution level.
+ *
+ * These multipliers are applied to the FPL "base points" for the gameweek.
+ * Example (Legendary, Evo 4, base 10 pts) => 10 * 2.0 = 20 FML points.
+ */
+function getEvolutionMultiplier(
+  rarityRaw: string | null | undefined,
+  evolutionLevelRaw: number | null | undefined
+): number {
+  const rarity = (rarityRaw || "").toUpperCase().trim();
+  const evo = Math.max(0, evolutionLevelRaw ?? 0);
+  const maxEvo = getMaxEvoForRarity(rarity);
+  const clampedEvo = Math.min(evo, maxEvo);
+
+  // Mythicals: treat as “always juiced”
+  if (rarity === "MYTHICAL") {
+    // even if evolutionLevel is 0, they get a strong fixed buff
+    return 1.8;
+  }
+
+  // Base multipliers per rarity and evo
+  switch (rarity) {
+    case "COMMON": {
+      if (clampedEvo === 0) return 1.0;
+      // Evo 1
+      return 1.15;
+    }
+    case "RARE": {
+      if (clampedEvo === 0) return 1.0;
+      if (clampedEvo === 1) return 1.20;
+      // Evo 2
+      return 1.35;
+    }
+    case "EPIC": {
+      if (clampedEvo === 0) return 1.0;
+      if (clampedEvo === 1) return 1.25;
+      if (clampedEvo === 2) return 1.45;
+      // Evo 3
+      return 1.65;
+    }
+    case "LEGENDARY": {
+      if (clampedEvo === 0) return 1.0;
+      if (clampedEvo === 1) return 1.30;
+      if (clampedEvo === 2) return 1.55;
+      if (clampedEvo === 3) return 1.80;
+      // Evo 4
+      return 2.0;
+    }
+    default: {
+      // Unknown rarity: treat as common-ish
+      if (clampedEvo === 0) return 1.0;
+      return 1.1;
+    }
+  }
+}
+
+// ---------- Chip helpers ----------
+
+/**
+ * Evaluate whether a chip condition succeeds given the player's performance.
+ *
+ * conditionType comes from ChipTemplate.conditionType, e.g.:
+ * "GOAL_SURGE", "PLAYMAKER", "WALL", "HEROIC_HAUL", "STEADY_FORM"
+ */
+function checkChipSuccess(
+  conditionTypeRaw: string,
+  perf: PlayerPerformance,
+  basePoints: number
+): boolean {
+  const t = (conditionTypeRaw || "").toUpperCase().trim();
+
+  switch (t) {
+    case "GOAL_SURGE":
+      // Needs at least 1 goal
+      return perf.goals >= 1;
+
+    case "PLAYMAKER":
+      // Needs 2+ attacking returns (goals + assists)
+      return perf.goals + perf.assists >= 2;
+
+    case "WALL":
+      // Clean sheet + 60+ minutes
+      return perf.cleanSheets > 0 && perf.minutes >= 60;
+
+    case "HEROIC_HAUL":
+      // Big FPL haul
+      return basePoints >= 12;
+
+    case "STEADY_FORM":
+      // Solid, dependable score
+      return basePoints >= 5;
+
+    default:
+      // Unknown condition: treat as never-success
+      return false;
+  }
+}
 
 // ---------- Fetch helpers ----------
 
@@ -125,6 +252,9 @@ async function fetchFplGameweekLiveWithCode(
       assists: el.stats.assists ?? 0,
       cleanSheets: el.stats.clean_sheets ?? 0,
       totalPoints: el.stats.total_points ?? 0,
+      minutes: el.stats.minutes ?? 0,
+      saves: el.stats.saves ?? 0,
+      pensSaved: el.stats.penalties_saved ?? 0,
     };
   });
 }
@@ -142,6 +272,11 @@ async function fetchFplGameweekLiveWithCode(
  *  5. For each entry, compute per-monster GW points and per-user total.
  *  6. Update monster career totals and GameweekEntryMonster.points.
  *  7. Upsert UserGameweekScore per user (sum of their 6 selected monsters).
+ *
+ * Now also:
+ *  - Applies rarity + evolution multipliers to the FPL base points.
+ *  - Classifies blanks (basePoints <= 2) and tracks blankStreak.
+ *  - Applies chip-based evolution and blank/disaster devolution.
  */
 export async function applyGameweekPerformances(
   gameweekNumber: number
@@ -214,6 +349,26 @@ export async function applyGameweekPerformances(
     return;
   }
 
+  // Preload all chip assignments for this gameweek to avoid N+1 lookups
+  const chipAssignments = await prisma.monsterChipAssignment.findMany({
+    where: { gameweekId: gw.id },
+    include: {
+      userChip: {
+        include: {
+          template: true,
+        },
+      },
+    },
+  });
+
+  const chipByMonsterId = new Map<
+    string,
+    (typeof chipAssignments)[number]
+  >();
+  for (const ca of chipAssignments) {
+    chipByMonsterId.set(ca.userMonsterId, ca);
+  }
+
   // 5 & 6) For each entry, compute monster GW points and user total
   const userTotals = new Map<string, number>(); // userId -> total GW points
 
@@ -223,36 +378,137 @@ export async function applyGameweekPerformances(
     for (const em of entry.monsters) {
       const monster = em.userMonster;
       const perf = perfByCode.get(monster.templateCode);
-      const points = perf?.totalPoints ?? 0;
 
-      // Update career totals only if we have perf data
+      // FPL base points for this player in this gameweek
+      const basePoints = perf?.totalPoints ?? 0;
+
+      // Blank definition: anything 2 points and lower (before our multipliers)
+      const isBlank = basePoints <= 2;
+      const isBigFail = basePoints <= 0; // e.g. red, OG, etc.
+
+      const rarity = (monster.rarity || "").toUpperCase().trim();
+      const evoLevel = (monster as any).evolutionLevel ?? 0;
+      const currentBlankStreak = (monster as any).blankStreak ?? 0;
+
+      // Track blank streak
+      let newBlankStreak = isBlank ? currentBlankStreak + 1 : 0;
+
+      let newEvoLevel = evoLevel;
+      let evoChanged = false;
+      let evoReason: string | null = null;
+
+      // ---------- Devolution from blanks / disasters (non-Mythical only) ----------
+      if (rarity !== "MYTHICAL" && evoLevel > 0) {
+        // First: big disaster (<= 0 points) => immediate delevel by 1
+        if (isBigFail) {
+          newEvoLevel = Math.max(0, newEvoLevel - 1);
+          evoChanged = true;
+          evoReason =
+            evoReason ??
+            `Devolved after disastrous performance (${basePoints} base points).`;
+          // reset streak so they don't get double-punished
+          newBlankStreak = 0;
+        } else if (newBlankStreak >= 3) {
+          // 3 blanks in a row (<= 2 points)
+          newEvoLevel = Math.max(0, newEvoLevel - 1);
+          evoChanged = true;
+          evoReason =
+            evoReason ??
+            "Devolved after 3 consecutive blanks (base points ≤ 2).";
+          newBlankStreak = 0;
+        }
+      }
+
+      // ---------- Chip-based evolution ----------
+      const chipAssignment = chipByMonsterId.get(monster.id);
+      if (chipAssignment && perf) {
+        const chipTemplate = chipAssignment.userChip.template;
+        const chipSuccess = checkChipSuccess(
+          chipTemplate.conditionType,
+          perf,
+          basePoints
+        );
+
+        // Only allow evo via chips on non-Mythical monsters
+        if (chipSuccess && rarity !== "MYTHICAL") {
+          const maxEvo = getMaxEvoForRarity(rarity);
+          if (newEvoLevel < maxEvo) {
+            const before = newEvoLevel;
+            newEvoLevel = newEvoLevel + 1;
+            evoChanged = true;
+            const chipReason = `Evolved via chip "${chipTemplate.code}" in GW ${gameweekNumber} (Evo ${before} → ${newEvoLevel}).`;
+            evoReason = evoReason ? `${evoReason} ${chipReason}` : chipReason;
+          }
+        }
+
+        // Consume chip & remove assignment regardless of success/fail
+        await prisma.userChip.update({
+          where: { id: chipAssignment.userChipId },
+          data: { isConsumed: true },
+        });
+
+        await prisma.monsterChipAssignment.delete({
+          where: { id: chipAssignment.id },
+        });
+      }
+
+      // ---------- Evolution multiplier ----------
+      const multiplier = getEvolutionMultiplier(rarity, newEvoLevel);
+      const finalPoints = Math.round(basePoints * multiplier);
+
+      // Build update payload for this monster
+      const monsterUpdateData: any = {
+        blankStreak: newBlankStreak,
+      };
+
       if (perf) {
-        await prisma.userMonster.update({
-          where: { id: monster.id },
+        monsterUpdateData.totalGoals = {
+          increment: perf.goals,
+        };
+        monsterUpdateData.totalAssists = {
+          increment: perf.assists,
+        };
+        monsterUpdateData.totalCleanSheets = {
+          increment: perf.cleanSheets,
+        };
+        monsterUpdateData.totalFantasyPoints = {
+          // IMPORTANT: track the *boosted* FML points, not just raw FPL points
+          increment: finalPoints,
+        };
+      }
+
+      if (newEvoLevel !== evoLevel) {
+        monsterUpdateData.evolutionLevel = newEvoLevel;
+      }
+
+      // Update career totals + streak + evo
+      await prisma.userMonster.update({
+        where: { id: monster.id },
+        data: monsterUpdateData,
+      });
+
+      // Log evolution / devolution if it happened
+      if (newEvoLevel !== evoLevel) {
+        await prisma.evolutionEvent.create({
           data: {
-            totalGoals: {
-              increment: perf.goals,
-            },
-            totalAssists: {
-              increment: perf.assists,
-            },
-            totalCleanSheets: {
-              increment: perf.cleanSheets,
-            },
-            totalFantasyPoints: {
-              increment: perf.totalPoints,
-            },
+            userMonsterId: monster.id,
+            gameweekId: gw.id,
+            reason:
+              evoReason ??
+              `Evolution level changed from ${evoLevel} to ${newEvoLevel}.`,
+            oldLevel: evoLevel,
+            newLevel: newEvoLevel,
           },
         });
       }
 
-      // Store per-monster GW points on the entry record
+      // Store per-monster GW FML points on the entry record
       await prisma.gameweekEntryMonster.update({
         where: { id: em.id },
-        data: { points },
+        data: { points: finalPoints },
       });
 
-      entryTotal += points;
+      entryTotal += finalPoints;
     }
 
     const prev = userTotals.get(entry.userId) ?? 0;
@@ -282,6 +538,6 @@ export async function applyGameweekPerformances(
   }
 
   console.log(
-    `Scored gameweek ${gameweekNumber} for ${entriesArray.length} users (6 locked monsters each).`
+    `Scored gameweek ${gameweekNumber} for ${entriesArray.length} users (6 locked monsters each, with evo multipliers + chips + blanks).`
   );
 }

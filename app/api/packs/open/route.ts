@@ -3,13 +3,20 @@
 // Opens a pack for the current user.
 // - Starter packs ("starter"): free, max 2 per user.
 // - Paid packs (bronze/silver/gold): cost coins from user balance.
-// - Uses monsters-2025-26.json (teams + players) and generates rarity + base stats on the fly,
-//   but with smarter rarity so fringe players are almost always common.
+// - Uses monsters-2025-26.json (teams + players) and generates rarity + base stats on the fly.
 //
-// Now also:
-// - Prepares for themed / limited editions via pack definition knobs.
-// - Stores basic art path + setCode on UserMonster so front-end cards can show images.
-// - Updates objectives via the Season 1 sync helper (open packs, collection size, etc.).
+// NEW IN THIS VERSION:
+// - Uses minutesFirst13 from your JSON to decide who can be multi-rarity.
+//   * minutesFirst13 < 300  => COMMON-only (true fringe / barely plays)
+//   * minutesFirst13 >= 300 => can roll COMMON / RARE / EPIC / LEGENDARY
+// - Pack-specific rarity odds for multi-rarity players (starter/bronze/silver/gold).
+// - Tiny chance per card to roll from the 8 Mythical monsters pool,
+//   which always have rarity "MYTHICAL" and custom art/stats.
+//
+// Still also:
+// - Handles limited editions via pack definition knobs.
+// - Stores artBasePath + setCode on UserMonster.
+// - Updates objectives via the Season 1 sync helper.
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -18,6 +25,7 @@ import { getPackDefinition, PackId } from "@/lib/packs";
 
 import rawTeams from "@/data/monsters-2025-26.json";
 import { syncObjectivesForUserSeason1 } from "@/lib/objectives/syncSeason1";
+import { MYTHICAL_MONSTERS } from "@/lib/mythicals";
 
 export const runtime = "nodejs";
 
@@ -33,6 +41,10 @@ type RawPlayer = {
   teamName: string;
   teamShortName: string;
   photo: string;
+  // NEW: minutes from first 13 gameweeks, added by your script
+  minutesFirst13?: number;
+  // Optional art override (used by Mythicals)
+  artBasePath?: string;
 };
 
 type RawTeam = {
@@ -47,132 +59,86 @@ const ALL_PLAYERS: RawPlayer[] = (rawTeams as RawTeam[]).flatMap(
   (team) => team.players || []
 );
 
-// --- Tiering logic --------------------------------------------------
+// --- Minutes-based eligibility --------------------------------------
 
-const ELITE_KEYWORDS = [
-  "haaland",
-  "salah",
-  "odegaard",
-  "saka",
-  "bruno fernandes",
-  "rashford",
-  "de bruyne",
-  "foden",
-  "son",
-  "palmer",
-  "trent",
-  "alexander-arnold",
-  "van dijk",
-  "allison",
-  "alisson",
-  "rodri",
-  "martinelli",
-  "sterling",
-  "nunez",
-  "gordon",
-  "isak",
-  "odegaard",
-];
+// Below this many minutes, a player is treated as a fringe/no-gametime card
+// and will be COMMON-only in packs.
+const MINUTES_CUTOFF = 300;
 
-const CORE_KEYWORDS = [
-  "martinez",
-  "raya",
-  "ramsdale",
-  "gabriel",
-  "white",
-  "saliba",
-  "rice",
-  "havertz",
-  "anthony",
-  "antony",
-  "casemiro",
-  "shaw",
-  "dalot",
-  "stones",
-  "walker",
-  "dias",
-  "grealish",
-  "bernardo",
-  "jota",
-  "gakpo",
-  "robertson",
-  "chilwell",
-  "reese james",
-  "reese-james",
-  "madueke",
-  "martial",
-  "odegaard",
-];
-
-type PlayerTier = "elite" | "core" | "fringe";
-
-function normalize(s: string | undefined | null): string {
-  return (s || "").toLowerCase();
+function canRollHigherRarity(player: RawPlayer): boolean {
+  const minutes = player.minutesFirst13 ?? 0;
+  return minutes >= MINUTES_CUTOFF;
 }
 
-function getPlayerTier(player: RawPlayer): PlayerTier {
-  const rn = normalize(player.realName);
-  const wn = normalize(player.webName);
-  const mn = normalize(player.monsterName);
+// --- Pack rarity profiles for normal players ------------------------
 
-  const haystack = `${rn} ${wn} ${mn}`;
+type RarityProfile = {
+  common: number;
+  rare: number;
+  epic: number;
+  legendary: number;
+};
 
-  for (const key of ELITE_KEYWORDS) {
-    if (haystack.includes(key)) {
-      return "elite";
-    }
-  }
+const PACK_RARITY_PROFILES: Record<PackId, RarityProfile> = {
+  starter: {
+    common: 0.92,
+    rare: 0.07,
+    epic: 0.01,
+    legendary: 0.0,
+  },
+  bronze: {
+    common: 0.84,
+    rare: 0.13,
+    epic: 0.03,
+    legendary: 0.0,
+  },
+  silver: {
+    common: 0.72,
+    rare: 0.18,
+    epic: 0.08,
+    legendary: 0.02,
+  },
+  gold: {
+    common: 0.55,
+    rare: 0.25,
+    epic: 0.15,
+    legendary: 0.05,
+  },
+};
 
-  for (const key of CORE_KEYWORDS) {
-    if (haystack.includes(key)) {
-      return "core";
-    }
-  }
-
-  return "fringe";
+function getRarityProfile(packId: PackId): RarityProfile {
+  return PACK_RARITY_PROFILES[packId] ?? PACK_RARITY_PROFILES.starter;
 }
 
-// --- Rarity + stats generation --------------------------------------
+function rollBaseRarityForPack(packId: PackId): string {
+  const profile = getRarityProfile(packId);
+  const r = Math.random();
+  let acc = 0;
 
-function rollRarity(
-  player: RawPlayer,
-  bias: "normal" | "premium"
-): string {
-  const tier = getPlayerTier(player);
-  const roll = Math.random();
+  acc += profile.common;
+  if (r < acc) return "COMMON";
 
-  if (tier === "fringe") {
-    if (roll < 0.85) return "COMMON";
-    return "RARE";
-  }
+  acc += profile.rare;
+  if (r < acc) return "RARE";
 
-  if (tier === "core") {
-    if (bias === "normal") {
-      if (roll < 0.6) return "COMMON";
-      if (roll < 0.9) return "RARE";
-      if (roll < 0.98) return "EPIC";
-      return "LEGENDARY";
-    } else {
-      if (roll < 0.45) return "COMMON";
-      if (roll < 0.75) return "RARE";
-      if (roll < 0.93) return "EPIC";
-      return "LEGENDARY";
-    }
-  }
+  acc += profile.epic;
+  if (r < acc) return "EPIC";
 
-  // elite
-  if (bias === "normal") {
-    if (roll < 0.3) return "COMMON";
-    if (roll < 0.65) return "RARE";
-    if (roll < 0.9) return "EPIC";
-    return "LEGENDARY";
-  } else {
-    if (roll < 0.15) return "COMMON";
-    if (roll < 0.45) return "RARE";
-    if (roll < 0.8) return "EPIC";
-    return "LEGENDARY";
-  }
+  return "LEGENDARY";
 }
+
+function rollRarityForPlayer(player: RawPlayer, packId: PackId): string {
+  // If they haven't played enough, they're a fringe / no-gametime monster:
+  // COMMON-only, regardless of pack.
+  if (!canRollHigherRarity(player)) {
+    return "COMMON";
+  }
+
+  // Otherwise, use the pack's rarity profile.
+  return rollBaseRarityForPack(packId);
+}
+
+// --- Stat generation for normal players -----------------------------
 
 function generateBaseStats(position: string, rarity: string) {
   let baseAtk = 40;
@@ -213,6 +179,8 @@ function generateBaseStats(position: string, rarity: string) {
   };
 }
 
+// --- Limited editions ------------------------------------------------
+
 function maybeRollLimitedEdition(
   limitedEditionChance: number | undefined
 ): boolean {
@@ -224,10 +192,57 @@ function buildBaseArtPath(player: RawPlayer): string {
   return `/cards/base/${player.code}.png`;
 }
 
-// Pick N random players for a pack, with tier-aware rarity
+// --- Mythical roll helper -------------------------------------------
+
+function rollMythical(
+  mythicalChancePerCard: number | undefined
+): RawPlayer & {
+  rarity: string;
+  baseAttack: number;
+  baseMagic: number;
+  baseDefense: number;
+} | null {
+  if (!mythicalChancePerCard || mythicalChancePerCard <= 0) {
+    return null;
+  }
+
+  const r = Math.random();
+  if (r >= mythicalChancePerCard) return null;
+
+  if (MYTHICAL_MONSTERS.length === 0) return null;
+
+  const myth =
+    MYTHICAL_MONSTERS[
+      Math.floor(Math.random() * MYTHICAL_MONSTERS.length)
+    ];
+
+  // Shape it like a normal pack monster but with rarity "MYTHICAL"
+  return {
+    fplId: myth.fplId,
+    code: myth.code,
+    realName: myth.realName,
+    webName: myth.webName,
+    monsterName: myth.monsterName,
+    position: myth.position,
+    teamId: myth.teamId,
+    teamName: myth.teamName,
+    teamShortName: myth.teamShortName,
+    photo: myth.photo,
+    artBasePath: myth.artBasePath,
+    rarity: "MYTHICAL",
+    baseAttack: myth.baseAttack,
+    baseMagic: myth.baseMagic,
+    baseDefense: myth.baseDefense,
+  };
+}
+
+// Pick N monsters for a pack, mixing:
+// - Mythicals (tiny chance, from MYTHICAL_MONSTERS)
+// - Normal players (minutes + rarity profile)
 function pickPlayersForPack(
   size: number,
-  rarityBias: "normal" | "premium"
+  packId: PackId,
+  mythicalChancePerCard: number | undefined
 ): (RawPlayer & {
   rarity: string;
   baseAttack: number;
@@ -246,9 +261,17 @@ function pickPlayersForPack(
   })[] = [];
 
   for (let i = 0; i < size; i++) {
+    // 1) Try Mythical roll first
+    const myth = rollMythical(mythicalChancePerCard);
+    if (myth) {
+      result.push(myth);
+      continue;
+    }
+
+    // 2) Otherwise, pick a normal player from the JSON
     const raw =
       ALL_PLAYERS[Math.floor(Math.random() * ALL_PLAYERS.length)];
-    const rarity = rollRarity(raw, rarityBias);
+    const rarity = rollRarityForPlayer(raw, packId);
     const stats = generateBaseStats(raw.position, rarity);
 
     result.push({
@@ -302,6 +325,7 @@ export async function POST(req: NextRequest) {
         throw new Error("User not found.");
       }
 
+      // Starter pack: max 2 opens per user
       if (def.id === "starter") {
         const openedStarterCount = await tx.packOpen.count({
           where: {
@@ -316,10 +340,9 @@ export async function POST(req: NextRequest) {
           );
         }
       } else {
+        // Paid packs: check coin balance
         if (dbUser.coins < def.cost) {
-          throw new Error(
-            "Not enough coins to buy this pack."
-          );
+          throw new Error("Not enough coins to buy this pack.");
         }
       }
 
@@ -339,19 +362,36 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      const chosen = pickPlayersForPack(def.size, def.rarityBias);
+      const chosen = pickPlayersForPack(
+        def.size,
+        def.id,
+        def.mythicalChancePerCard
+      );
 
       const createdMonsters = [];
       for (const p of chosen) {
-        const isLimited = maybeRollLimitedEdition(
-          def.limitedEditionChance
-        );
+        const isMythical = p.rarity === "MYTHICAL";
 
-        const setCode = "BASE";
-        const editionType = isLimited ? "LIMITED" : "BASE";
-        const editionLabel = isLimited ? "Limited Edition" : null;
+        // Mythicals should NOT be limited editions on top
+        const isLimited =
+          !isMythical && maybeRollLimitedEdition(def.limitedEditionChance);
 
-        const artBasePath = buildBaseArtPath(p);
+        const setCode = isMythical ? "MYTHICAL" : "BASE";
+        const editionType = isMythical
+          ? "BASE"
+          : isLimited
+          ? "LIMITED"
+          : "BASE";
+        const editionLabel = isMythical
+          ? "Mythical"
+          : isLimited
+          ? "Limited Edition"
+          : null;
+
+        const artBasePath =
+          p.artBasePath && isMythical
+            ? p.artBasePath
+            : buildBaseArtPath(p);
 
         const created = await tx.userMonster.create({
           data: {
@@ -378,7 +418,9 @@ export async function POST(req: NextRequest) {
             userMonsterId: created.id,
             actorUserId: dbUser.id,
             action: "CREATED",
-            description: `Found in ${def.name} pack (${def.id})`,
+            description: `Found in ${def.name} pack (${def.id})${
+              isMythical ? " [MYTHICAL]" : ""
+            }`,
           },
         });
 
