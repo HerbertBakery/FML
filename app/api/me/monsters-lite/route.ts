@@ -1,4 +1,4 @@
-// app/api/me/monsters-lite/route.ts
+    // app/api/me/monsters-lite/route.ts
 //
 // GET /api/me/monsters-lite
 // Returns a simple list of the current user's monsters (not consumed),

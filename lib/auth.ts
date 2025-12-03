@@ -1,6 +1,7 @@
 // lib/auth.ts
 import jwt from "jsonwebtoken";
 import type { NextRequest } from "next/server";
+import { cookies } from "next/headers";
 import { prisma } from "./db";
 
 const AUTH_SECRET = process.env.AUTH_SECRET || "dev-secret-change-me";
@@ -26,8 +27,11 @@ export function verifySessionToken(token: string): SessionPayload | null {
   }
 }
 
-export async function getUserFromRequest(req: NextRequest) {
-  const cookie = req.cookies.get("fml_session");
+// Note: we keep the NextRequest argument for compatibility,
+// but we no longer use req.cookies – we use cookies() instead.
+export async function getUserFromRequest(_req?: NextRequest) {
+  const cookieStore = cookies();
+  const cookie = cookieStore.get("fml_session");
   if (!cookie?.value) {
     return null;
   }
