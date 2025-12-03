@@ -1,4 +1,4 @@
-    // app/api/me/monsters-lite/route.ts
+// app/api/me/monsters-lite/route.ts
 //
 // GET /api/me/monsters-lite
 // Returns a simple list of the current user's monsters (not consumed),
@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {

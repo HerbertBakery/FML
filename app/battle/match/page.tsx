@@ -1,6 +1,6 @@
-// app/battle/single/page.tsx
+export const dynamic = "force-dynamic";
+// app/battle/match/page.tsx
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import MonsterCard, {

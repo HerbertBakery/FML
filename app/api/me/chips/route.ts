@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
