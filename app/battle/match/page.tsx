@@ -1,4 +1,3 @@
-export const dynamic = "force-dynamic";
 // app/battle/match/page.tsx
 "use client";
 import { useEffect, useMemo, useState } from "react";
