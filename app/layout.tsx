@@ -34,7 +34,6 @@ export default function RootLayout({
               {/* Main tabs + auth */}
               <div className="flex flex-col items-end gap-2">
                 <nav className="flex flex-wrap items-center justify-end gap-1.5 text-[11px]">
-                  
                   <Link
                     href="/"
                     className="rounded-full border border-slate-700 px-2.5 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
@@ -89,6 +88,14 @@ export default function RootLayout({
                     className="rounded-full border border-slate-700 px-2.5 py-1 text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
                   >
                     Evos
+                  </Link>
+
+                  {/* NEW: Battle Mode */}
+                  <Link
+                    href="/battle"
+                    className="rounded-full border border-emerald-500/70 px-2.5 py-1 text-emerald-300 hover:border-emerald-300 hover:text-emerald-200"
+                  >
+                    Battle
                   </Link>
                 </nav>
 

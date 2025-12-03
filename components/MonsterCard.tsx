@@ -17,13 +17,13 @@ export type MonsterCardMonster = {
   baseDefense: number;
   evolutionLevel?: number;
 
-  // visual / edition info
-  artUrl?: string; // main card art (static or animated)
-  hoverArtUrl?: string; // optional alt art on hover
-  setCode?: string; // e.g. "BASE", "CHRISTMAS_TERRORS_2025"
-  editionType?: string; // "BASE" | "THEMED" | "LIMITED" (for badges if needed)
-  serialNumber?: number; // e.g. 23 (for #23/100)
-  editionLabel?: string; // e.g. "1 of 100", "Founders Edition"
+  artUrl?: string;
+  hoverArtUrl?: string;
+
+  setCode?: string;
+  editionType?: string;
+  serialNumber?: number;
+  editionLabel?: string;
 };
 
 export type ActiveChipInfo = {
@@ -34,18 +34,9 @@ export type ActiveChipInfo = {
 
 type MonsterCardProps = {
   monster: MonsterCardMonster;
-  /** Optional badge shown instead of the default rarity text */
   rightBadge?: ReactNode;
-  /** Extra content rendered below the stats (price, buttons, etc.) */
   children?: ReactNode;
-  /**
-   * Optional link to a monster detail/history page.
-   * If provided, a "View details" link will appear at the bottom of the card.
-   */
   detailHref?: string;
-  /**
-   * 🔥 NEW: If this monster has an active chip, show a badge.
-   */
   activeChip?: ActiveChipInfo | null;
 };
 
@@ -102,7 +93,7 @@ export default function MonsterCard({
       ? `Serial #${monster.serialNumber}`
       : undefined);
 
-  // Preload hover art so it swaps instantly on hover
+  // Preload hover art
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!monster.hoverArtUrl) return;
@@ -115,16 +106,23 @@ export default function MonsterCard({
       className={`group rounded-xl border ${border} ${background} p-3 text-xs flex flex-col justify-between gap-2 overflow-hidden`}
     >
       <div>
-        {/* Art / image area */}
+        {/* ART AREA */}
         {hasArt && (
           <div className="mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4]">
+
+            {/* --- 🔥 POSITION BADGE --- */}
+            <div className="absolute top-1 left-1 z-10 rounded-md bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300 shadow-sm">
+              {monster.position}
+            </div>
+
             {/* Base art */}
             <img
               src={monster.artUrl}
               alt={monster.displayName}
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
-            {/* Optional hover art overlay */}
+
+            {/* Hover art */}
             {monster.hoverArtUrl && (
               <img
                 src={monster.hoverArtUrl}
@@ -135,13 +133,10 @@ export default function MonsterCard({
           </div>
         )}
 
-        {/* Name + rarity/chip */}
+        {/* NAME + RARITY/CHIP */}
         <div className="mb-1">
-          <span className="font-semibold block">
-            {monster.displayName}
-          </span>
+          <span className="font-semibold block">{monster.displayName}</span>
 
-          {/* 🔥 Active chip badge (if any) */}
           {activeChip ? (
             <div className="mt-0.5">
               <MonsterChipBadge
@@ -155,9 +150,7 @@ export default function MonsterCard({
               {rightBadge ? (
                 <span className="text-[10px]">{rightBadge}</span>
               ) : (
-                <span
-                  className={`text-[10px] uppercase font-semibold ${badge}`}
-                >
+                <span className={`text-[10px] uppercase font-semibold ${badge}`}>
                   {monster.rarity}
                 </span>
               )}
@@ -165,12 +158,12 @@ export default function MonsterCard({
           )}
         </div>
 
+        {/* PLAYER INFO */}
         <p className="text-[11px] text-slate-300">
           {monster.realPlayerName} • {monster.club}
         </p>
 
-        {/* 🔥 ATK / MAG / DEF line removed as requested */}
-
+        {/* Evolution level */}
         {typeof monster.evolutionLevel === "number" && (
           <p className="text-[10px] text-emerald-300 mt-1">
             Evo Lv. {monster.evolutionLevel}
@@ -178,9 +171,7 @@ export default function MonsterCard({
         )}
 
         {editionText && (
-          <p className="text-[10px] text-amber-300 mt-1">
-            {editionText}
-          </p>
+          <p className="text-[10px] text-amber-300 mt-1">{editionText}</p>
         )}
       </div>
 

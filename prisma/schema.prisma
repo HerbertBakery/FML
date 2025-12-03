@@ -57,6 +57,11 @@ model User {
 
   // NEW: chips owned by the user (for evolution tasks)
   chips                     UserChip[]
+
+  // NEW: PvP battle relations
+  battleMatchesAsPlayer1    BattleMatch[]         @relation("BattleMatchPlayer1")
+  battleMatchesAsPlayer2    BattleMatch[]         @relation("BattleMatchPlayer2")
+  battleQueueEntry          BattleQueueEntry?
 }
 
 model UserMonster {
@@ -293,7 +298,7 @@ model SquadChallengeTemplate {
   requiredNation   String?                  // reserved if you ever add nations later
   // Reward definition (coins / pack / special)
   rewardType  String                        // "coins" | "pack" | "special"
-  rewardValue String                        // e.g. "500", or "gold", or some code
+  rewardValue String
   isRepeatable Boolean                      @default(true)
   isActive    Boolean                       @default(true)
   createdAt   DateTime                      @default(now())
@@ -519,4 +524,35 @@ model MonsterChipAssignment {
   gameweekId    String
 
   createdAt     DateTime      @default(now())
+}
+
+///////////////////////////////////////////////////////////
+// NEW: PvP Battle matchmaking
+///////////////////////////////////////////////////////////
+
+model BattleMatch {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  status    String   @default("WAITING") // WAITING | IN_PROGRESS | COMPLETED
+
+  player1   User     @relation("BattleMatchPlayer1", fields: [player1Id], references: [id])
+  player1Id String
+
+  player2   User?    @relation("BattleMatchPlayer2", fields: [player2Id], references: [id])
+  player2Id String?
+
+  currentTurnPlayerId String?
+  winnerUserId        String?
+
+  // In the next step, we'll store the full battle snapshot here as JSON
+  battleState Json?
+
+  lastUpdatedAt DateTime @default(now())
+}
+
+model BattleQueueEntry {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String   @unique
+  createdAt DateTime @default(now())
 }
