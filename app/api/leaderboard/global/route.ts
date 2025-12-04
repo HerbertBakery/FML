@@ -21,36 +21,37 @@ export async function GET(req: NextRequest) {
       const latest = await prisma.gameweek.findFirst({
         where: {
           scores: {
-            some: {}
-          }
+            some: {},
+          },
         },
         orderBy: {
-          number: "desc"
-        }
+          number: "desc",
+        },
       });
 
       if (!latest) {
         return NextResponse.json({
           mode: "gameweek",
           gameweek: null,
-          entries: []
+          entries: [],
         });
       }
 
       const scores = await prisma.userGameweekScore.findMany({
         where: { gameweekId: latest.id },
         include: {
-          user: true
+          user: true,
         },
         orderBy: {
-          points: "desc"
-        }
+          points: "desc",
+        },
       });
 
       const entries = scores.map((s) => ({
         userId: s.userId,
+        username: s.user.username ?? s.user.email,
         email: s.user.email,
-        points: s.points
+        points: s.points,
       }));
 
       return NextResponse.json({
@@ -59,9 +60,9 @@ export async function GET(req: NextRequest) {
           id: latest.id,
           number: latest.number,
           name: latest.name,
-          deadlineAt: latest.deadlineAt
+          deadlineAt: latest.deadlineAt,
         },
-        entries
+        entries,
       });
     }
 
@@ -69,44 +70,57 @@ export async function GET(req: NextRequest) {
     const grouped = await prisma.userGameweekScore.groupBy({
       by: ["userId"],
       _sum: {
-        points: true
+        points: true,
       },
       orderBy: {
         _sum: {
-          points: "desc"
-        }
-      }
+          points: "desc",
+        },
+      },
     });
 
     if (grouped.length === 0) {
       return NextResponse.json({
         mode: "overall",
         gameweek: null,
-        entries: []
+        entries: [],
       });
     }
 
     const userIds = grouped.map((g) => g.userId);
     const users = await prisma.user.findMany({
       where: {
-        id: { in: userIds }
-      }
+        id: { in: userIds },
+      },
     });
 
-    const userMap = new Map(
-      users.map((u) => [u.id, u.email] as [string, string])
+    const userMap = new Map<
+      string,
+      { username: string | null; email: string }
+    >(
+      users.map((u) => [
+        u.id,
+        { username: u.username, email: u.email },
+      ])
     );
 
-    const entries = grouped.map((g) => ({
-      userId: g.userId,
-      email: userMap.get(g.userId) ?? "Unknown manager",
-      points: g._sum.points ?? 0
-    }));
+    const entries = grouped.map((g) => {
+      const info = userMap.get(g.userId);
+      const username =
+        info?.username ?? info?.email ?? "Unknown manager";
+      const email = info?.email ?? "";
+      return {
+        userId: g.userId,
+        username,
+        email,
+        points: g._sum.points ?? 0,
+      };
+    });
 
     return NextResponse.json({
       mode: "overall",
       gameweek: null,
-      entries
+      entries,
     });
   } catch (err: any) {
     console.error("Error loading leaderboard:", err);

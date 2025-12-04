@@ -1,4 +1,3 @@
-// lib/scoring.ts
 //
 // Gameweek scoring for Fantasy Monster League.
 //
@@ -268,10 +267,10 @@ async function fetchFplGameweekLiveWithCode(
  *  1. Ensure Gameweek row exists (create if missing).
  *  2. Fetch FPL stats (live + bootstrap mapping).
  *  3. Build a map from FPL "code" -> performance.
- *  4. For this gameweek, find all GameweekEntry rows + their 6 monsters.
+ *  4. For this gameweek, find all GameweekEntry rows + their 7 monsters.
  *  5. For each entry, compute per-monster GW points and per-user total.
  *  6. Update monster career totals and GameweekEntryMonster.points.
- *  7. Upsert UserGameweekScore per user (sum of their 6 selected monsters).
+ *  7. Upsert UserGameweekScore per user (sum of their 7 selected monsters).
  *
  * Now also:
  *  - Applies rarity + evolution multipliers to the FPL base points.
@@ -325,7 +324,7 @@ export async function applyGameweekPerformances(
     return;
   }
 
-  // 4) Load all locked entries for this gameweek, each with its 6 monsters
+  // 4) Load all locked entries for this gameweek, each with its 7 monsters
   const entries = await prisma.gameweekEntry.findMany({
     where: {
       gameweekId: gw.id,
@@ -515,7 +514,7 @@ export async function applyGameweekPerformances(
     userTotals.set(entry.userId, prev + entryTotal);
   }
 
-  // 7) Upsert UserGameweekScore per user (sum of *their 6 locked monsters*)
+  // 7) Upsert UserGameweekScore per user (sum of *their 7 locked monsters*)
   const entriesArray = Array.from(userTotals.entries()); // [userId, points]
 
   for (const [userId, points] of entriesArray) {
@@ -538,6 +537,6 @@ export async function applyGameweekPerformances(
   }
 
   console.log(
-    `Scored gameweek ${gameweekNumber} for ${entriesArray.length} users (6 locked monsters each, with evo multipliers + chips + blanks).`
+    `Scored gameweek ${gameweekNumber} for ${entriesArray.length} users (7 locked monsters each, with evo multipliers + chips + blanks).`
   );
 }

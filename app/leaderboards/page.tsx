@@ -7,7 +7,8 @@ type Mode = "gameweek" | "overall";
 
 type LeaderboardEntry = {
   userId: string;
-  email: string;
+  username: string;
+  email?: string;
   points: number;
 };
 
@@ -290,7 +291,7 @@ export default function LeaderboardsPage() {
                             href={`/managers/${entry.userId}`}
                             className="text-slate-100 hover:text-emerald-300 underline underline-offset-2"
                           >
-                            {entry.email}
+                            {entry.username}
                           </Link>
                           {isMe && (
                             <span className="ml-2 text-[10px] text-emerald-300">
@@ -372,7 +373,8 @@ export default function LeaderboardsPage() {
                     {league.isOwner ? "You" : league.ownerEmail}
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Members: {league.myRank ? `#${league.myRank}` : "— (no scores yet)"}
+                    Members: {league.memberCount} • Your rank:{" "}
+                    {league.myRank ? `#${league.myRank}` : "— (no scores yet)"}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">

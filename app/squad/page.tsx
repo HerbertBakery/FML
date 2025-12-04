@@ -49,7 +49,7 @@ type GameweekHistoryEntry = {
 };
 
 type GameweekSquadMonster = UserMonsterDTO & {
-  isSub: boolean;
+  isSub: boolean; // may still come from API, but conceptually all 7 can score now
   gameweekPoints: number;
 };
 
@@ -108,7 +108,7 @@ export default function SquadPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [detailMonsterId, setDetailMonsterId] = useState<string | null>(null);
-  const maxPlayers = 6;
+  const maxPlayers = 7;
 
   // Filters/search
   const [searchTerm, setSearchTerm] = useState("");
@@ -236,9 +236,33 @@ export default function SquadPage() {
   function toggleSelect(monsterId: string) {
     setError(null);
     setSuccess(null);
+
     setSelectedIds((prev) => {
-      if (prev.includes(monsterId)) return prev.filter((id) => id !== monsterId);
-      if (prev.length >= maxPlayers) return prev;
+      // Deselect
+      if (prev.includes(monsterId)) {
+        return prev.filter((id) => id !== monsterId);
+      }
+
+      // Don't exceed total squad size
+      if (prev.length >= maxPlayers) {
+        return prev;
+      }
+
+      const monster = collection.find((m) => m.id === monsterId);
+      if (!monster) return prev;
+
+      // Enforce max 1 GK in selection
+      if (monster.position === "GK") {
+        const currentGKCount = collection.filter(
+          (m) => prev.includes(m.id) && m.position === "GK"
+        ).length;
+
+        if (currentGKCount >= 1) {
+          setError("You can only select 1 Goalkeeper.");
+          return prev;
+        }
+      }
+
       return [...prev, monsterId];
     });
   }
@@ -250,14 +274,14 @@ export default function SquadPage() {
 
     if (!isValidSquad) {
       setError(
-        "You must pick exactly 6 monsters, including exactly 1 GK and at least 1 DEF, 1 MID, and 1 FWD."
+        "You must pick exactly 7 monsters, including exactly 1 GK and at least 1 DEF, 1 MID, and 1 FWD."
       );
       return;
     }
 
     setSaving(true);
     try {
-      // 1) Save / overwrite your default 6-monster squad
+      // 1) Save / overwrite your default 7-monster squad
       const squadRes = await fetch("/api/squad", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -282,7 +306,6 @@ export default function SquadPage() {
       const gwData = await gwRes.json().catch(() => null);
 
       if (!gwRes.ok) {
-        // This will surface "Deadline has passed for the current gameweek."
         setError(
           gwData?.error ||
             "Your squad was saved, but we couldn’t update it for the current gameweek."
@@ -293,9 +316,6 @@ export default function SquadPage() {
       setSuccess(
         "Squad saved for the current gameweek. You can still make changes and resubmit until the deadline."
       );
-
-      // Optional: refresh history / GW squad after save if you want
-      // but not required for pitch to update
     } catch {
       setError("Something went wrong saving and locking your squad.");
     } finally {
@@ -359,9 +379,7 @@ export default function SquadPage() {
 
   const hasGwHistory = gwHistory.length > 0 && gwIndex !== null;
 
-  // 👉 New logic: decide what the pitch uses.
-  // - Latest GW (default view on this page): always show live selection.
-  // - When you navigate BACK with ← to an older GW: show the locked squad for that GW.
+  // Decide what the pitch uses.
   const viewingLatestGw =
     hasGwHistory && gwIndex !== null && gwIndex === gwHistory.length - 1;
 
@@ -415,7 +433,7 @@ export default function SquadPage() {
         <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
           <h2 className="text-xl font-semibold mb-2">Log in to manage your squad</h2>
           <p className="text-sm text-slate-300 mb-3">
-            You need an account to build and lock your 6-monster team for the upcoming
+            You need an account to build and lock your 7-monster team for the upcoming
             gameweek.
           </p>
           <div className="flex gap-3">
@@ -439,7 +457,6 @@ export default function SquadPage() {
 
   const hasEnoughPlayers = collection.length >= maxPlayers;
 
-  // Only show GW total / header as "history" when looking at an older GW
   const showGwOnPitch = shouldUseLockedGw && !!gwSquad?.gameweek;
   const pitchTotalPoints = showGwOnPitch ? gwSquad!.totalPoints : 0;
 
@@ -448,12 +465,12 @@ export default function SquadPage() {
       <main className="space-y-6">
         <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
           <h2 className="text-xl font-semibold mb-2">
-            Build your 6-monster matchday squad
+            Build your 7-monster matchday squad
           </h2>
           <p className="text-xs text-slate-400 mb-2">
-            Pick exactly 6 monsters: you must have exactly 1 Goalkeeper plus at least 1
-            Defender, 1 Midfielder, and 1 Forward. The extra 2 outfielders act as your
-            subs for this gameweek.
+            Pick exactly 7 monsters: you must have exactly 1 Goalkeeper plus at least 1
+            Defender, 1 Midfielder, and 1 Forward. All 7 monsters can score points for
+            your fantasy total this gameweek.
           </p>
           <p className="text-xs text-slate-400">
             Signed in as <span className="font-mono">{user.email}</span>
@@ -469,7 +486,7 @@ export default function SquadPage() {
               <Link href="/" className="underline underline-offset-2">
                 home page
               </Link>{" "}
-              until you have at least 6 monsters to build a squad.
+              until you have at least 7 monsters to build a squad.
             </p>
           </section>
         ) : (
@@ -681,7 +698,7 @@ export default function SquadPage() {
                 Search & filters
               </h3>
               <p className="text-[11px] text-slate-400 mb-1">
-                Filter your collection while picking your 6-monster squad.
+                Filter your collection while picking your 7-monster squad.
               </p>
 
               <div className="grid gap-3 sm:grid-cols-3">
@@ -887,7 +904,6 @@ function PitchCard({ monster }: { monster: PitchMonster }) {
       </div>
       <div className="text-[9px] text-emerald-200">
         {monster.position} • {monster.club}
-        {monster.isSub ? " • SUB" : ""}
       </div>
       {typeof monster.gameweekPoints === "number" && (
         <div className="mt-1 rounded-full bg-emerald-800/80 px-2 py-0.5 text-[11px] font-mono font-semibold text-emerald-50">

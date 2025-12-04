@@ -24,10 +24,10 @@ export async function GET(
     include: {
       memberships: {
         include: {
-          user: true
-        }
-      }
-    }
+          user: true,
+        },
+      },
+    },
   });
 
   if (!league) {
@@ -52,12 +52,12 @@ export async function GET(
   const latestGw = await prisma.gameweek.findFirst({
     where: {
       scores: {
-        some: {}
-      }
+        some: {},
+      },
     },
     orderBy: {
-      number: "desc"
-    }
+      number: "desc",
+    },
   });
 
   const memberIds = league.memberships.map((m) => m.userId);
@@ -67,8 +67,8 @@ export async function GET(
     const scores = await prisma.userGameweekScore.findMany({
       where: {
         gameweekId: latestGw.id,
-        userId: { in: memberIds }
-      }
+        userId: { in: memberIds },
+      },
     });
 
     for (const s of scores) {
@@ -79,8 +79,9 @@ export async function GET(
   const result = league.memberships
     .map((m) => ({
       userId: m.userId,
+      username: m.user.username ?? m.user.email,
       email: m.user.email,
-      points: scoreByUser.get(m.userId) ?? 0
+      points: scoreByUser.get(m.userId) ?? 0,
     }))
     .sort((a, b) => b.points - a.points);
 
@@ -93,16 +94,20 @@ export async function GET(
       id: league.id,
       name: league.name,
       code: league.code,
-      ownerEmail: ownerMembership?.user.email
+      ownerName:
+        ownerMembership?.user.username ??
+        ownerMembership?.user.email ??
+        "",
+      ownerEmail: ownerMembership?.user.email ?? "",
     },
     gameweek: latestGw
       ? {
-        id: latestGw.id,
-        number: latestGw.number,
-        name: latestGw.name ?? null,
-        deadlineAt: latestGw.deadlineAt
-      }
+          id: latestGw.id,
+          number: latestGw.number,
+          name: latestGw.name ?? null,
+          deadlineAt: latestGw.deadlineAt,
+        }
       : null,
-    scores: result
+    scores: result,
   });
 }

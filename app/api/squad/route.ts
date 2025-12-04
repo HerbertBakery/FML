@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// POST: save 6-monster “default” squad
+// POST: save 7-monster “default” squad
 export async function POST(req: NextRequest) {
   const user = await getUserFromRequest(req);
   if (!user) {
@@ -121,11 +121,11 @@ export async function POST(req: NextRequest) {
   const ids = body.userMonsterIds || [];
   const uniqueIds = Array.from(new Set(ids));
 
-  const maxPlayers = 6;
+  const maxPlayers = 7;
 
   if (uniqueIds.length !== maxPlayers) {
     return NextResponse.json(
-      { error: "You must select exactly 6 monsters." },
+      { error: "You must select exactly 7 monsters." },
       { status: 400 }
     );
   }

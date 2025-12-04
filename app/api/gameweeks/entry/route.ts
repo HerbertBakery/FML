@@ -1,4 +1,3 @@
-// app/api/gameweeks/entry/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
@@ -26,7 +25,7 @@ function positionsSummary(monsters: { position: string }[]) {
   return counts;
 }
 
-// POST: lock the 6-monster squad as the entry for the current gameweek
+// POST: lock the 7-monster squad as the entry for the current gameweek
 export async function POST(req: NextRequest) {
   const user = await getUserFromRequest(req);
   if (!user) {
@@ -62,11 +61,11 @@ export async function POST(req: NextRequest) {
 
   const ids = body.userMonsterIds || [];
   const uniqueIds = Array.from(new Set(ids));
-  const maxPlayers = 6;
+  const maxPlayers = 7;
 
   if (uniqueIds.length !== maxPlayers) {
     return NextResponse.json(
-      { error: "You must select exactly 6 monsters." },
+      { error: "You must select exactly 7 monsters." },
       { status: 400 }
     );
   }
@@ -102,8 +101,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Save entry + attach 6 monsters.
-  // We'll treat the last 2 as "subs" for now (slot >= 4 => isSub = true)
+  // Save entry + attach 7 monsters.
+  // All 7 can score for your fantasy total (no bench concept right now).
   const entry = await prisma.$transaction(async (tx) => {
     // Find existing entry for this user+gameweek
     const existingEntry = await tx.gameweekEntry.findFirst({
@@ -137,7 +136,8 @@ export async function POST(req: NextRequest) {
         entryId,
         userMonsterId: monsterId,
         slot: index,
-        isSub: index >= 4, // first 4 = starters, last 2 = subs
+        // Fantasy mode: no subs – all 7 are active scorers
+        isSub: false,
       })),
     });
 
