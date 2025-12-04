@@ -244,12 +244,14 @@ export default function PacksPage() {
       </main>
 
       {activePack && (
-        <PackOpenModal
-          packId={activePack}
-          onClose={handleCloseModal}
-          onOpened={handleOpened}
-        />
-      )}
+  <PackOpenModal
+    packId={activePack}
+    onClose={handleCloseModal}
+    onOpened={handleOpened}
+    redirectToSquad={false} // 👈 stay on the shop page
+  />
+)}
+
     </>
   );
 }
