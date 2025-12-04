@@ -1,6 +1,7 @@
 // app/battle/match/page.tsx
 "use client";
-import { useEffect, useMemo, useState } from "react";
+
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import MonsterCard, {
   type MonsterCardMonster,
@@ -874,6 +875,22 @@ function createBattleFromBase(
 type PositionFilter = "ALL" | Position;
 
 export default function BattleMatchPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="space-y-4">
+          <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+            <p className="text-sm text-slate-200">Loading battle mode…</p>
+          </section>
+        </main>
+      }
+    >
+      <BattleMatchInner />
+    </Suspense>
+  );
+}
+
+function BattleMatchInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isPvP = (searchParams?.get("mode") || "").toLowerCase() === "pvp";
@@ -1189,7 +1206,7 @@ export default function BattleMatchPage() {
       return;
     }
     const m = battle.player.board[idx];
-    if (!m) return;
+       if (!m) return;
     if (!m.canAttack) {
       setActionMessage("This monster can’t attack right now.");
       return;
@@ -1360,7 +1377,7 @@ export default function BattleMatchPage() {
   if (collection.length === 0) {
     return (
       <main className="space-y-4">
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
           <p className="text-sm text-slate-200">
             You don&apos;t have any monsters yet. Open some packs before
             entering battle.
