@@ -174,12 +174,13 @@ export default function SquadPage() {
           credentials: "include",
         });
         if (colRes.ok) {
-          const colData: CollectionResponse = await colRes.json();
-          setCollection(colData.monsters);
+          // AFTER – preload ALL monster art
+const colData: CollectionResponse = await colRes.json();
+setCollection(colData.monsters);
 
-          const preview = colData.monsters.slice(0, 24);
-          const urls = preview.map((m) => getArtUrlForMonster(m));
-          void preloadImages(urls);
+const urls = colData.monsters.map((m) => getArtUrlForMonster(m));
+void preloadImages(urls);
+
         }
 
         // Default squad

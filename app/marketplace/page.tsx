@@ -65,6 +65,32 @@ function getArtUrlForMonster(m: UserMonsterDTO): string {
 }
 
 // ---------------------------
+// Image preloading helper
+// ---------------------------
+function preloadImages(urls: string[]): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+
+  const unique = Array.from(
+    new Set(urls.filter((u) => typeof u === "string" && u.length > 0))
+  );
+  if (!unique.length) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    let loaded = 0;
+    const total = unique.length;
+
+    unique.forEach((url) => {
+      const img = new window.Image();
+      img.onload = img.onerror = () => {
+        loaded += 1;
+        if (loaded >= total) resolve();
+      };
+      img.src = url;
+    });
+  });
+}
+
+// ---------------------------
 // Rarity sort helper
 // ---------------------------
 const rarityOrder: Record<string, number> = {
@@ -161,19 +187,32 @@ export default function MarketplacePage() {
         return;
       }
 
+      // We'll store these locally to feed into the preloader.
+      let colMonsters: UserMonsterDTO[] = [];
+      let listings: MarketListingDTO[] = [];
+
       if (colRes.ok) {
         const colJson = (await colRes.json()) as CollectionResponse;
-        setCollection(colJson.monsters || []);
+        colMonsters = colJson.monsters || [];
+        setCollection(colMonsters);
       } else {
         setCollection([]);
       }
 
       if (marketRes.ok) {
         const marketJson = (await marketRes.json()) as MarketResponse;
-        setMarketListings(marketJson.listings || []);
+        listings = marketJson.listings || [];
+        setMarketListings(listings);
       } else {
         setMarketListings([]);
       }
+
+      // 🔥 Preload ALL art used on this page (collection + listings)
+      const urls: string[] = [
+        ...colMonsters.map((m) => getArtUrlForMonster(m)),
+        ...listings.map((l) => getArtUrlForMonster(l.userMonster)),
+      ];
+      void preloadImages(urls);
     } catch {
       setError("Failed to load marketplace data. Please try again.");
       setCollection([]);
