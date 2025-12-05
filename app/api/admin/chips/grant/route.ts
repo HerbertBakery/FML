@@ -7,8 +7,8 @@
 // Used for testing / rewards / shop, etc.
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { getUserFromRequest } from "@/lib/auth";
+import { requireAdminSecret } from "@/lib/adminAuth";
+import { grantChipsToUser } from "@/lib/chips";
 
 export const runtime = "nodejs";
 
@@ -19,15 +19,12 @@ type Body = {
 };
 
 export async function POST(req: NextRequest) {
-  try {
-    const caller = await getUserFromRequest(req);
-    if (!caller) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
-    }
+  const adminCheck = await requireAdminSecret(req);
+  if (!adminCheck.ok) {
+    return adminCheck.response;
+  }
 
+  try {
     const body = (await req.json().catch(() => ({}))) as Body;
     const { userId, chipCode, count } = body;
 
@@ -40,39 +37,16 @@ export async function POST(req: NextRequest) {
 
     const n = !count || count < 1 ? 1 : Math.min(count, 50); // hard cap for sanity
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      return NextResponse.json(
-        { error: "Target user not found." },
-        { status: 404 }
-      );
-    }
-
-    const template = await prisma.chipTemplate.findUnique({
-      where: { code: chipCode },
+    // Use the shared helper so remainingTries respects template.maxTries
+    const created = await grantChipsToUser({
+      userId,
+      chipCode,
+      count: n,
     });
-
-    if (!template) {
-      return NextResponse.json(
-        { error: `Chip template with code '${chipCode}' not found.` },
-        { status: 404 }
-      );
-    }
-
-    const created = [];
-    for (let i = 0; i < n; i++) {
-      const chip = await prisma.userChip.create({
-        data: {
-          userId: user.id,
-          templateId: template.id,
-        },
-      });
-      created.push(chip);
-    }
 
     return NextResponse.json({
       message: `Granted ${n} '${chipCode}' chip(s) to user.`,
-      userId: user.id,
+      userId,
       chipCode,
       chips: created,
     });

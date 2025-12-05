@@ -37,6 +37,7 @@ type UserChipDTO = {
   isConsumed: boolean;
   createdAt: string;
   consumedAt: string | null;
+  remainingTries: number; // NEW: lives left
   template: ChipTemplateDTO;
   assignments: ChipAssignmentDTO[];
 };
@@ -115,17 +116,21 @@ export default function ChipsPage() {
   const selectedChip = chips.find((c) => c.id === selectedChipId) || null;
 
   const statusForChip = (chip: UserChipDTO): string => {
-    if (chip.isConsumed) return "Consumed";
+    const tries = chip.remainingTries ?? 0;
+
+    if (chip.isConsumed) {
+      return "Consumed";
+    }
 
     const activeAssignment = chip.assignments.find(
       (a) => a.resolvedAt === null
     );
 
     if (activeAssignment) {
-      return `Assigned (GW ${activeAssignment.gameweekNumber})`;
+      return `Assigned · GW ${activeAssignment.gameweekNumber} · ${tries} tries left`;
     }
 
-    return "Available";
+    return `Available · ${tries} tries left`;
   };
 
   // --- Monster picker logic ---
@@ -179,6 +184,18 @@ export default function ChipsPage() {
       setAssignMessage("Select a chip from the list first.");
       return;
     }
+
+    const chip = chips.find((c) => c.id === selectedChipId);
+    if (!chip) {
+      setAssignMessage("Could not find selected chip.");
+      return;
+    }
+
+    if (chip.isConsumed || (chip.remainingTries ?? 0) <= 0) {
+      setAssignMessage("This chip has no tries left.");
+      return;
+    }
+
     if (!monsterIdInput.trim()) {
       setAssignMessage("Choose a monster to attach the chip to.");
       return;
@@ -211,7 +228,7 @@ export default function ChipsPage() {
 
       setAssignMessage("Chip assigned successfully.");
 
-      // Reload chips so UI reflects assignment
+      // Reload chips so UI reflects assignment + tries
       const reload = await fetch("/api/me/chips");
       if (reload.ok) {
         const rData = (await reload.json()) as ChipsResponse;
@@ -232,7 +249,8 @@ export default function ChipsPage() {
         </h1>
         <p className="text-sm text-slate-400">
           Attach chips to your monsters before a gameweek. If the
-          real-world condition hits, they evolve.
+          real-world condition hits, they evolve. Each chip has a
+          limited number of tries.
         </p>
       </header>
 
@@ -303,13 +321,26 @@ export default function ChipsPage() {
                           {chip.template.conditionType}
                         </span>
                       </p>
+                      {!chip.isConsumed && (
+                        <p className="text-[11px] text-emerald-300">
+                          Tries left:{" "}
+                          <span className="font-semibold">
+                            {chip.remainingTries ?? 0}
+                          </span>
+                        </p>
+                      )}
+                      {chip.isConsumed && (
+                        <p className="text-[11px] text-rose-300">
+                          This chip has been fully used.
+                        </p>
+                      )}
                     </div>
 
                     <div className="text-right">
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium 
                           ${
-                            status === "Available"
+                            status.startsWith("Available")
                               ? "bg-emerald-900/50 text-emerald-200 border border-emerald-500/40"
                               : chip.isConsumed
                               ? "bg-rose-900/40 text-rose-200 border border-rose-500/40"
@@ -345,6 +376,12 @@ export default function ChipsPage() {
                   </span>
                 </p>
                 <p>{selectedChip.template.description}</p>
+                <p className="text-[11px] text-slate-400">
+                  Tries left:{" "}
+                  <span className="font-semibold text-emerald-300">
+                    {selectedChip.remainingTries ?? 0}
+                  </span>
+                </p>
               </div>
             ) : (
               <p className="text-xs text-slate-400">

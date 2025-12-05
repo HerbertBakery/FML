@@ -109,7 +109,6 @@ export default function MonsterCard({
         {/* ART AREA */}
         {hasArt && (
           <div className="mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4]">
-
             {/* --- 🔥 POSITION BADGE --- */}
             <div className="absolute top-1 left-1 z-10 rounded-md bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300 shadow-sm">
               {monster.position}
@@ -140,9 +139,10 @@ export default function MonsterCard({
           {activeChip ? (
             <div className="mt-0.5">
               <MonsterChipBadge
-                name={activeChip.name}
+                label={activeChip.name}
                 code={activeChip.code}
-                gameweekNumber={activeChip.gameweekNumber}
+                size="sm"
+                className="shadow-emerald-500/40"
               />
             </div>
           ) : (
@@ -150,7 +150,9 @@ export default function MonsterCard({
               {rightBadge ? (
                 <span className="text-[10px]">{rightBadge}</span>
               ) : (
-                <span className={`text-[10px] uppercase font-semibold ${badge}`}>
+                <span
+                  className={`text-[10px] uppercase font-semibold ${badge}`}
+                >
                   {monster.rarity}
                 </span>
               )}

@@ -9,6 +9,13 @@
 // - Aggregates per-user gameweek totals into UserGameweekScore.
 // - Applies rarity + evolution multipliers to FPL points.
 // - Applies chip-based evolution and blank-based devolution.
+//
+// Chips now have LIMITED TRIES:
+// - Initial tries come from ChipTemplate.maxTries (or default 2 if missing).
+// - On success: chip is consumed (isConsumed=true, remainingTries=0).
+// - On failure: remainingTries--. If it hits 0, chip is consumed.
+//   You can then re-assign the chip between failures; each assignment uses a “life”.
+//
 
 import { prisma } from "@/lib/db";
 
@@ -115,7 +122,7 @@ function getEvolutionMultiplier(
     }
     case "RARE": {
       if (clampedEvo === 0) return 1.0;
-      if (clampedEvo === 1) return 1.20;
+      if (clampedEvo === 1) return 1.2;
       // Evo 2
       return 1.35;
     }
@@ -128,9 +135,9 @@ function getEvolutionMultiplier(
     }
     case "LEGENDARY": {
       if (clampedEvo === 0) return 1.0;
-      if (clampedEvo === 1) return 1.30;
+      if (clampedEvo === 1) return 1.3;
       if (clampedEvo === 2) return 1.55;
-      if (clampedEvo === 3) return 1.80;
+      if (clampedEvo === 3) return 1.8;
       // Evo 4
       return 2.0;
     }
@@ -149,6 +156,11 @@ function getEvolutionMultiplier(
  *
  * conditionType comes from ChipTemplate.conditionType, e.g.:
  * "GOAL_SURGE", "PLAYMAKER", "WALL", "HEROIC_HAUL", "STEADY_FORM"
+ *
+ * NOTE: We only have access to *per-match* FPL stats, not per-half or
+ * historical streaks. So anything like "FIRST_HALF_GOAL" or
+ * "TWO_CLEAN_SHEETS_IN_A_ROW" would need extra data/state and is not
+ * implemented here.
  */
 function checkChipSuccess(
   conditionTypeRaw: string,
@@ -161,6 +173,18 @@ function checkChipSuccess(
     case "GOAL_SURGE":
       // Needs at least 1 goal
       return perf.goals >= 1;
+
+    case "BRACE":
+      // Needs at least 2 goals
+      return perf.goals >= 2;
+
+    case "HAT_TRICK":
+      // Needs 3+ goals
+      return perf.goals >= 3;
+
+    case "GOAL_OR_ASSIST":
+      // Any attacking return
+      return perf.goals + perf.assists >= 1;
 
     case "PLAYMAKER":
       // Needs 2+ attacking returns (goals + assists)
@@ -179,7 +203,7 @@ function checkChipSuccess(
       return basePoints >= 5;
 
     default:
-      // Unknown condition: treat as never-success
+      // Unknown condition: treat as never-success (safe default)
       return false;
   }
 }
@@ -270,12 +294,13 @@ async function fetchFplGameweekLiveWithCode(
  *  4. For this gameweek, find all GameweekEntry rows + their 7 monsters.
  *  5. For each entry, compute per-monster GW points and per-user total.
  *  6. Update monster career totals and GameweekEntryMonster.points.
- *  7. Upsert UserGameweekScore per user (sum of their 7 selected monsters).
+ *  7. Upsert UserGameweekScore per user (sum of all selected monsters).
  *
  * Now also:
  *  - Applies rarity + evolution multipliers to the FPL base points.
  *  - Classifies blanks (basePoints <= 2) and tracks blankStreak.
- *  - Applies chip-based evolution and blank/disaster devolution.
+ *  - Applies chip-based evolution with limited tries.
+ *  - Applies blank/disaster devolution.
  */
 export async function applyGameweekPerformances(
   gameweekNumber: number
@@ -324,7 +349,7 @@ export async function applyGameweekPerformances(
     return;
   }
 
-  // 4) Load all locked entries for this gameweek, each with its 7 monsters
+  // 4) Load all locked entries for this gameweek, each with its monsters
   const entries = await prisma.gameweekEntry.findMany({
     where: {
       gameweekId: gw.id,
@@ -348,9 +373,12 @@ export async function applyGameweekPerformances(
     return;
   }
 
-  // Preload all chip assignments for this gameweek to avoid N+1 lookups
+  // Preload all *active* chip assignments (not yet resolved) for this gameweek.
   const chipAssignments = await prisma.monsterChipAssignment.findMany({
-    where: { gameweekId: gw.id },
+    where: {
+      gameweekId: gw.id,
+      resolvedAt: null,
+    },
     include: {
       userChip: {
         include: {
@@ -418,17 +446,36 @@ export async function applyGameweekPerformances(
         }
       }
 
-      // ---------- Chip-based evolution ----------
+      // ---------- Chip-based evolution with limited tries ----------
       const chipAssignment = chipByMonsterId.get(monster.id);
-      if (chipAssignment && perf) {
-        const chipTemplate = chipAssignment.userChip.template;
-        const chipSuccess = checkChipSuccess(
-          chipTemplate.conditionType,
-          perf,
-          basePoints
-        );
 
-        // Only allow evo via chips on non-Mythical monsters
+      if (chipAssignment) {
+        const chipTemplate = chipAssignment.userChip.template;
+        const chip = chipAssignment.userChip;
+
+        // If the player didn't play / has no perf, treat as a failed attempt
+        const chipSuccess = perf
+          ? checkChipSuccess(
+              chipTemplate.conditionType,
+              perf,
+              basePoints
+            )
+          : false;
+
+        const maxTriesFromTemplate =
+          typeof chipTemplate.maxTries === "number" &&
+          chipTemplate.maxTries > 0
+            ? chipTemplate.maxTries
+            : 2;
+
+        // Use remainingTries if present, otherwise derive from template
+        const currentTries =
+          typeof chip.remainingTries === "number"
+            ? chip.remainingTries
+            : maxTriesFromTemplate;
+
+        let nextTries = currentTries;
+
         if (chipSuccess && rarity !== "MYTHICAL") {
           const maxEvo = getMaxEvoForRarity(rarity);
           if (newEvoLevel < maxEvo) {
@@ -438,17 +485,57 @@ export async function applyGameweekPerformances(
             const chipReason = `Evolved via chip "${chipTemplate.code}" in GW ${gameweekNumber} (Evo ${before} → ${newEvoLevel}).`;
             evoReason = evoReason ? `${evoReason} ${chipReason}` : chipReason;
           }
+
+          // Success consumes the chip outright
+          nextTries = 0;
+
+          await prisma.userChip.update({
+            where: { id: chip.id },
+            data: {
+              isConsumed: true,
+              remainingTries: 0,
+              consumedAt: new Date(),
+            },
+          });
+
+          await prisma.monsterChipAssignment.update({
+            where: { id: chipAssignment.id },
+            data: {
+              resolvedAt: new Date(),
+              wasSuccessful: true,
+            },
+          });
+        } else {
+          // Failure (including "didn't play"): lose one life
+          nextTries = Math.max(0, currentTries - 1);
+          const shouldConsume = nextTries <= 0;
+
+          await prisma.userChip.update({
+            where: { id: chip.id },
+            data: {
+              remainingTries: nextTries,
+              ...(shouldConsume
+                ? {
+                    isConsumed: true,
+                    consumedAt: new Date(),
+                  }
+                : {}),
+            },
+          });
+
+          await prisma.monsterChipAssignment.update({
+            where: { id: chipAssignment.id },
+            data: {
+              resolvedAt: new Date(),
+              wasSuccessful: false,
+            },
+          });
         }
 
-        // Consume chip & remove assignment regardless of success/fail
-        await prisma.userChip.update({
-          where: { id: chipAssignment.userChipId },
-          data: { isConsumed: true },
-        });
-
-        await prisma.monsterChipAssignment.delete({
-          where: { id: chipAssignment.id },
-        });
+        // IMPORTANT:
+        // - We do NOT leave any unresolved assignment after scoring.
+        //   The chip can be re-assigned later (if remainingTries > 0)
+        //   by creating a NEW MonsterChipAssignment row for a future gameweek.
       }
 
       // ---------- Evolution multiplier ----------
@@ -514,7 +601,7 @@ export async function applyGameweekPerformances(
     userTotals.set(entry.userId, prev + entryTotal);
   }
 
-  // 7) Upsert UserGameweekScore per user (sum of *their 7 locked monsters*)
+  // 7) Upsert UserGameweekScore per user (sum of *their locked monsters*)
   const entriesArray = Array.from(userTotals.entries()); // [userId, points]
 
   for (const [userId, points] of entriesArray) {
@@ -537,6 +624,6 @@ export async function applyGameweekPerformances(
   }
 
   console.log(
-    `Scored gameweek ${gameweekNumber} for ${entriesArray.length} users (7 locked monsters each, with evo multipliers + chips + blanks).`
+    `Scored gameweek ${gameweekNumber} for ${entriesArray.length} users (with evo multipliers + chips (limited tries) + blanks).`
   );
 }

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
+import { grantChipsToUser } from "@/lib/chips";
 
 export const runtime = "nodejs";
 
@@ -168,7 +169,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // NEW: rarity constraint (exact or min)
+      // Rarity constraint (exact or min)
       validateRarityConstraint(
         {
           minRarity: challenge.minRarity,
@@ -233,6 +234,7 @@ export async function POST(req: NextRequest) {
 
       // Grant reward
       let rewardDescription = "";
+
       if (challenge.rewardType === "coins") {
         const coins =
           parseInt(challenge.rewardValue, 10) || 0;
@@ -255,7 +257,44 @@ export async function POST(req: NextRequest) {
           },
         });
         rewardDescription = `${packType} pack`;
+      } else if (challenge.rewardType === "chip") {
+        // rewardValue formats:
+        //   "GOAL_SURGE"
+        //   "GOAL_SURGE:x3"
+        const raw = (challenge.rewardValue || "").trim();
+        if (!raw) {
+          throw new Error("Chip reward is misconfigured (empty rewardValue).");
+        }
+
+        let chipCode = raw;
+        let count = 1;
+
+        if (raw.includes(":x")) {
+          const [code, nStr] = raw.split(":x");
+          chipCode = code.trim();
+          const parsed = parseInt(nStr, 10);
+          if (!Number.isNaN(parsed) && parsed > 0) {
+            count = parsed;
+          }
+        }
+
+        if (!chipCode) {
+          throw new Error("Chip reward is misconfigured (no chip code).");
+        }
+
+        // Use shared helper; it will throw if template/user invalid.
+        await grantChipsToUser({
+          userId: user.id,
+          chipCode,
+          count,
+        });
+
+        rewardDescription =
+          count > 1
+            ? `${count}x chip ${chipCode}`
+            : `chip ${chipCode}`;
       } else {
+        // Fallback for legacy / custom rewards
         rewardDescription = challenge.rewardValue;
       }
 

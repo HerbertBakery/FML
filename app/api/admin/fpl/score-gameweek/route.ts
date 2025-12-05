@@ -12,6 +12,7 @@ import {
   applyGameweekPerformances,
   StatInput
 } from "@/lib/scoring";
+import { requireAdminSecret } from "@/lib/adminAuth";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,11 @@ type FplBootstrapStatic = {
 };
 
 export async function POST(req: NextRequest) {
+  const adminCheck = await requireAdminSecret(req);
+  if (!adminCheck.ok) {
+    return adminCheck.response;
+  }
+
   let gameweekNumber: number | undefined;
 
   try {

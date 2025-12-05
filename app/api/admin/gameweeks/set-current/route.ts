@@ -4,10 +4,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
+import { requireAdminSecret } from "@/lib/adminAuth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  const adminCheck = await requireAdminSecret(req);
+  if (!adminCheck.ok) {
+    return adminCheck.response;
+  }
+
   try {
     const user = await getUserFromRequest(req);
 

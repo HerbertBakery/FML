@@ -4,6 +4,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import MonsterDetailModal from "@/components/MonsterDetailModal";
+import type { ActiveChipInfo } from "@/components/MonsterCard";
+import MonsterChipBadge from "@/components/MonsterChipBadge";
 
 type User = {
   id: string;
@@ -49,7 +51,7 @@ type GameweekHistoryEntry = {
 };
 
 type GameweekSquadMonster = UserMonsterDTO & {
-  isSub: boolean; // may still come from API, but conceptually all 7 can score now
+  isSub: boolean;
   gameweekPoints: number;
 };
 
@@ -66,6 +68,32 @@ type GameweekSquadResponse = {
 type PitchMonster = UserMonsterDTO & {
   isSub?: boolean;
   gameweekPoints?: number;
+};
+
+// /api/me/chips DTO slice (only what we need)
+type MeChipAssignmentDTO = {
+  id: string;
+  userMonsterId: string;
+  gameweekId: string;
+  gameweekNumber: number | null;
+  resolvedAt: string | null;
+  wasSuccessful: boolean | null;
+};
+
+type MeChipDTO = {
+  id: string;
+  isConsumed: boolean;
+  remainingTries: number;
+  template: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  assignments: MeChipAssignmentDTO[];
+};
+
+type MeChipsResponse = {
+  chips: MeChipDTO[];
 };
 
 function getArtUrlForMonster(m: UserMonsterDTO): string {
@@ -116,6 +144,11 @@ export default function SquadPage() {
   const [filterPosition, setFilterPosition] = useState<string>("ALL");
   const [filterClub, setFilterClub] = useState<string>("ALL");
 
+  // Chips: map from monsterId -> active chip info
+  const [monsterChipMap, setMonsterChipMap] = useState<
+    Record<string, ActiveChipInfo>
+  >({});
+
   // Gameweek history + current GW view
   const [gwHistory, setGwHistory] = useState<GameweekHistoryEntry[]>([]);
   const [gwIndex, setGwIndex] = useState<number | null>(null);
@@ -136,6 +169,7 @@ export default function SquadPage() {
         const meData = await meRes.json();
         setUser(meData.user);
 
+        // Collection
         const colRes = await fetch("/api/me/collection", {
           credentials: "include",
         });
@@ -148,6 +182,7 @@ export default function SquadPage() {
           void preloadImages(urls);
         }
 
+        // Default squad
         const squadRes = await fetch("/api/squad", {
           credentials: "include",
         });
@@ -158,6 +193,7 @@ export default function SquadPage() {
           }
         }
 
+        // GW history
         const gwRes = await fetch("/api/me/gameweeks", {
           credentials: "include",
         });
@@ -168,6 +204,32 @@ export default function SquadPage() {
           if (entries.length > 0) {
             setGwIndex(entries.length - 1); // latest GW
           }
+        }
+
+        // Chips (for evo pill)
+        const chipsRes = await fetch("/api/me/chips", {
+          credentials: "include",
+        });
+        if (chipsRes.ok) {
+          const chipsData: MeChipsResponse = await chipsRes.json();
+          const map: Record<string, ActiveChipInfo> = {};
+
+          for (const chip of chipsData.chips ?? []) {
+            if (chip.isConsumed) continue;
+
+            for (const asgn of chip.assignments ?? []) {
+              // Only unresolved assignments (still armed)
+              if (asgn.resolvedAt) continue;
+
+              map[asgn.userMonsterId] = {
+                name: chip.template.name,
+                code: chip.template.code,
+                gameweekNumber: asgn.gameweekNumber ?? null,
+              };
+            }
+          }
+
+          setMonsterChipMap(map);
         }
       } catch {
         setUser(null);
@@ -642,7 +704,11 @@ export default function SquadPage() {
                   <div className="flex justify-center mb-4">
                     {pitchByLine.GK.length ? (
                       pitchByLine.GK.map((m) => (
-                        <PitchCard key={m.id} monster={m} />
+                        <PitchCard
+                          key={m.id}
+                          monster={m}
+                          chip={monsterChipMap[m.id]}
+                        />
                       ))
                     ) : (
                       <PitchPlaceholder label="GK" />
@@ -653,7 +719,11 @@ export default function SquadPage() {
                   <div className="flex justify-center gap-3 mb-4">
                     {pitchByLine.DEF.length ? (
                       pitchByLine.DEF.map((m) => (
-                        <PitchCard key={m.id} monster={m} />
+                        <PitchCard
+                          key={m.id}
+                          monster={m}
+                          chip={monsterChipMap[m.id]}
+                        />
                       ))
                     ) : (
                       <PitchPlaceholder label="DEF" />
@@ -664,7 +734,11 @@ export default function SquadPage() {
                   <div className="flex justify-center gap-3 mb-4">
                     {pitchByLine.MID.length ? (
                       pitchByLine.MID.map((m) => (
-                        <PitchCard key={m.id} monster={m} />
+                        <PitchCard
+                          key={m.id}
+                          monster={m}
+                          chip={monsterChipMap[m.id]}
+                        />
                       ))
                     ) : (
                       <PitchPlaceholder label="MID" />
@@ -675,7 +749,11 @@ export default function SquadPage() {
                   <div className="flex justify-center gap-3">
                     {pitchByLine.FWD.length ? (
                       pitchByLine.FWD.map((m) => (
-                        <PitchCard key={m.id} monster={m} />
+                        <PitchCard
+                          key={m.id}
+                          monster={m}
+                          chip={monsterChipMap[m.id]}
+                        />
                       ))
                     ) : (
                       <PitchPlaceholder label="FWD" />
@@ -814,6 +892,7 @@ export default function SquadPage() {
                         const disabled =
                           !selected && selectedIds.length >= maxPlayers;
                         const artUrl = getArtUrlForMonster(monster);
+                        const chip = monsterChipMap[monster.id];
 
                         return (
                           <button
@@ -844,6 +923,18 @@ export default function SquadPage() {
                                 {monster.rarity}
                               </span>
                             </div>
+
+                            {chip && (
+                              <div className="mb-1">
+                                <MonsterChipBadge
+                                  label={chip.name}
+                                  code={chip.code}
+                                  size="sm"
+                                  className="shadow-emerald-500/40"
+                                />
+                              </div>
+                            )}
+
                             <p className="text-[11px] text-slate-300">
                               {monster.realPlayerName} • {monster.club}
                             </p>
@@ -887,7 +978,13 @@ export default function SquadPage() {
   );
 }
 
-function PitchCard({ monster }: { monster: PitchMonster }) {
+function PitchCard({
+  monster,
+  chip,
+}: {
+  monster: PitchMonster;
+  chip?: ActiveChipInfo;
+}) {
   const artUrl = getArtUrlForMonster(monster);
 
   return (
@@ -905,6 +1002,18 @@ function PitchCard({ monster }: { monster: PitchMonster }) {
       <div className="text-[9px] text-emerald-200">
         {monster.position} • {monster.club}
       </div>
+
+      {chip && (
+        <div className="mt-1">
+          <MonsterChipBadge
+            label={chip.name}
+            code={chip.code}
+            size="sm"
+            className="shadow-emerald-500/40"
+          />
+        </div>
+      )}
+
       {typeof monster.gameweekPoints === "number" && (
         <div className="mt-1 rounded-full bg-emerald-800/80 px-2 py-0.5 text-[11px] font-mono font-semibold text-emerald-50">
           GW pts:{" "}

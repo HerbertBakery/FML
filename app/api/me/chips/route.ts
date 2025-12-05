@@ -1,8 +1,8 @@
 // app/api/me/chips/route.ts
 //
 // GET /api/me/chips
-// Returns all chips owned by the current user, with template info
-// and any gameweek assignments.
+// Returns all chips owned by the current user, with template info,
+// remaining tries, and any gameweek assignments.
 //
 // This is used by the "My Chips" UI so players can see what they have.
 
@@ -42,6 +42,10 @@ export async function GET(req: NextRequest) {
     const dto = chips.map((chip) => ({
       id: chip.id,
       isConsumed: chip.isConsumed,
+      // 🔥 NEW: expose how many lives this instance has left
+      remainingTries: chip.remainingTries,
+      // 🔥 NEW: expose max tries from the template for UI display
+      maxTries: chip.template.maxTries,
       createdAt: chip.createdAt,
       consumedAt: chip.consumedAt,
       template: {
@@ -53,6 +57,8 @@ export async function GET(req: NextRequest) {
         minRarity: chip.template.minRarity,
         maxRarity: chip.template.maxRarity,
         allowedPositions: chip.template.allowedPositions,
+        // also expose here in case UI prefers template-based access
+        maxTries: chip.template.maxTries,
       },
       assignments: chip.assignments.map((asgn) => ({
         id: asgn.id,

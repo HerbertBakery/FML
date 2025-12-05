@@ -530,9 +530,11 @@ export default function AdminChallengesPage() {
               <option value="coins">coins</option>
               <option value="pack">pack</option>
               <option value="special">special</option>
+              <option value="chip">chip</option>
             </select>
             <p className="text-[10px] text-slate-500">
-              For packs/special, make sure your submit API handles the rewardValue.
+              "chip" will grant evolution chips (using its code) when players complete
+              this SBC.
             </p>
           </div>
 
@@ -542,8 +544,20 @@ export default function AdminChallengesPage() {
               value={rewardValue}
               onChange={(e) => setRewardValue(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs outline-none focus:border-emerald-400"
-              placeholder="500 or 'gold' etc."
+              placeholder={
+                rewardType === "coins"
+                  ? "500"
+                  : rewardType === "chip"
+                  ? "GOAL_SURGE or GOAL_SURGE:x3"
+                  : "gold-pack or custom id"
+              }
             />
+            <p className="text-[10px] text-slate-500">
+              For <span className="font-mono">coins</span>, use a number (e.g. 500).{" "}
+              For <span className="font-mono">chip</span>, use a chip code or
+              <span className="font-mono"> CODE:xN</span> (e.g.{" "}
+              <span className="font-mono">GOAL_SURGE:x3</span>).
+            </p>
           </div>
 
           <div className="space-y-1 flex items-center gap-2 sm:col-span-2">
