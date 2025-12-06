@@ -109,6 +109,11 @@ function manaFromRarity(tier: RarityTier): number {
   }
 }
 
+// ---- Hero Power constants (shared with PvP) ----
+
+const HERO_POWER_COST = 3;
+const HERO_POWER_DRAW = 2;
+
 type DbMonster = {
   id: string;
   templateCode: string;
@@ -611,6 +616,40 @@ export function playCardFromHand(
         player: other,
         log,
       };
+}
+
+// ----------------- HERO POWER (shared with PvP) ----------------------
+
+export function useHeroPower(
+  state: BattleState,
+  playerKey: PlayerKey
+): BattleState {
+  if (state.winner) return state;
+
+  const acting = playerKey === "player" ? state.player : state.opponent;
+  const other = playerKey === "player" ? state.opponent : state.player;
+
+  if (acting.mana < HERO_POWER_COST) {
+    return state;
+  }
+
+  let newActing: PlayerState = {
+    ...acting,
+    mana: acting.mana - HERO_POWER_COST,
+  };
+
+  for (let i = 0; i < HERO_POWER_DRAW; i++) {
+    newActing = drawCard(newActing);
+  }
+
+  const log = [
+    ...state.log,
+    `${acting.label} used their Hero Power and drew ${HERO_POWER_DRAW} cards.`,
+  ];
+
+  return playerKey === "player"
+    ? { ...state, player: newActing, opponent: other, log }
+    : { ...state, opponent: newActing, player: other, log };
 }
 
 // ----------------- BATTLE CREATION ----------------------

@@ -3,9 +3,6 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import MonsterCard, {
-  type MonsterCardMonster,
-} from "@/components/MonsterCard";
 
 // ---- Types reused from your world ----
 
@@ -56,8 +53,9 @@ type BattleMonsterCard = {
   hasSummoningSickness: boolean;
   canAttack: boolean;
 
-  // Kept for potential future abilities but not used in this Mode’s UI.
+  // additional status
   bypassDefendersOnce?: boolean;
+  stunnedForTurns?: number;
 
   // Visual info
   displayName?: string;
@@ -73,7 +71,12 @@ type BattleMonsterCard = {
   editionLabel?: string;
 };
 
-type SpellEffectType = "DAMAGE_HERO" | "SHIELD_HERO";
+type SpellEffectType =
+  | "DAMAGE_HERO"
+  | "HEAL_HERO"
+  | "SHIELD_HERO"
+  | "FORWARD_STUN"
+  | "DRAW_CARDS";
 
 type BattleSpellCard = {
   id: string;
@@ -82,7 +85,8 @@ type BattleSpellCard = {
   description: string;
   manaCost: number;
   effect: SpellEffectType;
-  value: number;
+  value: number; // damage / heal / armor / turns stunned / cards drawn
+  artUrl?: string;
 };
 
 type BattleCard = BattleMonsterCard | BattleSpellCard;
@@ -134,6 +138,10 @@ const TURN_DURATION = 60; // seconds per turn
 // XI rules: 1 GK hero + 10 outfield cards
 const TOTAL_XI = 11;
 const OUTFIELD_REQUIRED = 10;
+
+// Hero power: 3 mana → draw 2 cards
+const HERO_POWER_COST = 3;
+const HERO_POWER_DRAW = 2;
 
 // ---- Small helpers ----
 
@@ -237,6 +245,7 @@ function buildMonsterCard(m: UserMonsterDTO): BattleMonsterCard {
     keywords,
     hasSummoningSickness: true,
     canAttack: false,
+    stunnedForTurns: 0,
 
     displayName: m.displayName,
     realPlayerName: m.realPlayerName,
@@ -263,30 +272,165 @@ function buildHeroFromGK(gk: UserMonsterDTO): HeroState {
   };
 }
 
+/**
+ * SPELL ART:
+ * Place PNGs like:
+ *  /public/cards/spells/power-shot.png
+ *  /public/cards/spells/rooted-shield.png
+ *  /public/cards/spells/tackle-forward.png
+ * etc.
+ * These paths are referenced below in artUrl.
+ */
+
 function createSpellCards(): BattleSpellCard[] {
-  const base: BattleSpellCard[] = [
+  const base: Omit<BattleSpellCard, "id">[] = [
+    // 2 mana – big GK damage
     {
-      id: safeId("spell"),
       kind: "SPELL",
       name: "Power Shot",
-      description: "Deal 3 damage to the enemy Goalkeeper.",
+      description: "Deal 25 damage directly to the opponent’s Goalkeeper.",
       manaCost: 2,
       effect: "DAMAGE_HERO",
-      value: 3,
+      value: 25,
+      artUrl: "/cards/spells/power-shot.png",
+    },
+    // 3 mana – GK heal
+    {
+      kind: "SPELL",
+      name: "Rooted Shield",
+      description:
+        "Your Goalkeeper restores 30 health (up to their max HP).",
+      manaCost: 3,
+      effect: "HEAL_HERO",
+      value: 30,
+      artUrl: "/cards/spells/rooted-shield.png",
+    },
+    // 3 mana – stun a forward (in code we pick an enemy FWD)
+    {
+      kind: "SPELL",
+      name: "Tackle Forward",
+      description:
+        "Pick off an opponent’s Forward – it can’t attack on its next turn.",
+      manaCost: 3,
+      effect: "FORWARD_STUN",
+      value: 1, // 1 turn of stun
+      artUrl: "/cards/spells/tackle-forward.png",
+    },
+    // More GK damage variants
+    {
+      kind: "SPELL",
+      name: "Long Range Strike",
+      description:
+        "A thunderbolt from distance. Deal 35 damage to the opponent’s Goalkeeper.",
+      manaCost: 3,
+      effect: "DAMAGE_HERO",
+      value: 35,
+      artUrl: "/cards/spells/long-range-strike.png",
     },
     {
-      id: safeId("spell"),
       kind: "SPELL",
-      name: "Wall of Roots",
-      description: "Give your Goalkeeper 3 armor this turn.",
+      name: "Overload Shot",
+      description:
+        "Channel everything into one hit. Deal 45 damage to the opponent’s Goalkeeper.",
+      manaCost: 4,
+      effect: "DAMAGE_HERO",
+      value: 45,
+      artUrl: "/cards/spells/overload-shot.png",
+    },
+    // Armor / shield variants
+    {
+      kind: "SPELL",
+      name: "Iron Wall",
+      description:
+        "Reinforce your Goalkeeper. Gain 25 armor on your Goalkeeper.",
+      manaCost: 3,
+      effect: "SHIELD_HERO",
+      value: 25,
+      artUrl: "/cards/spells/iron-wall.png",
+    },
+    {
+      kind: "SPELL",
+      name: "Double Save",
+      description:
+        "Back-to-back reflex saves. Gain 15 armor and heal 10 health on your Goalkeeper.",
+      manaCost: 3,
+      effect: "SHIELD_HERO",
+      value: 25, // we split in code as 15 armor + 10 heal
+      artUrl: "/cards/spells/double-save.png",
+    },
+    {
+      kind: "SPELL",
+      name: "Miracle Hands",
+      description:
+        "A miracle stop. Heal 40 health on your Goalkeeper.",
+      manaCost: 4,
+      effect: "HEAL_HERO",
+      value: 40,
+      artUrl: "/cards/spells/miracle-hands.png",
+    },
+    // Draw spells
+    {
+      kind: "SPELL",
+      name: "Fan Momentum",
+      description: "The crowd roars you on. Draw 1 extra card.",
+      manaCost: 2,
+      effect: "DRAW_CARDS",
+      value: 1,
+      artUrl: "/cards/spells/fan-momentum.png",
+    },
+    {
+      kind: "SPELL",
+      name: "Tactical Insight",
+      description: "Study the pitch. Draw 2 extra cards.",
+      manaCost: 3,
+      effect: "DRAW_CARDS",
+      value: 2,
+      artUrl: "/cards/spells/tactical-insight.png",
+    },
+    {
+      kind: "SPELL",
+      name: "Coach’s Whisper",
+      description: "A clutch sideline tweak. Draw 3 cards.",
+      manaCost: 4,
+      effect: "DRAW_CARDS",
+      value: 3,
+      artUrl: "/cards/spells/coachs-whisper.png",
+    },
+    // Small buffs / sustain
+    {
+      kind: "SPELL",
+      name: "Quick Bandage",
+      description: "Patch things up. Heal 15 health on your Goalkeeper.",
+      manaCost: 2,
+      effect: "HEAL_HERO",
+      value: 15,
+      artUrl: "/cards/spells/quick-bandage.png",
+    },
+    {
+      kind: "SPELL",
+      name: "Crowd Shield",
+      description:
+        "The fans form a wall. Gain 10 armor and heal 10 HP on your Goalkeeper.",
       manaCost: 2,
       effect: "SHIELD_HERO",
-      value: 3,
+      value: 20, // 10 armor + 10 heal
+      artUrl: "/cards/spells/crowd-shield.png",
+    },
+    {
+      kind: "SPELL",
+      name: "Last-Minute Surge",
+      description:
+        "Late-game push. Heal 20 HP and gain 10 armor on your Goalkeeper.",
+      manaCost: 4,
+      effect: "SHIELD_HERO",
+      value: 30, // 20 heal + 10 armor
+      artUrl: "/cards/spells/last-minute-surge.png",
     },
   ];
 
+  // We want 9 random spells per deck (duplicates allowed).
   const spells: BattleSpellCard[] = [];
-  while (spells.length < 4) {
+  while (spells.length < 9) {
     const pick = base[Math.floor(Math.random() * base.length)];
     spells.push({ ...pick, id: safeId("spell") });
   }
@@ -385,14 +529,27 @@ function startTurn(p: PlayerState, turn: number): PlayerState {
   const mana = maxMana;
 
   const board = p.board.map((m) => {
-    const hasSummoningSickness = false;
+    // remove summoning sickness at the start of your turn
+    let hasSummoningSickness = m.hasSummoningSickness;
+    if (hasSummoningSickness) {
+      hasSummoningSickness = false;
+    }
+
+    // decrement stun duration
+    let stunnedForTurns = m.stunnedForTurns ?? 0;
+    if (stunnedForTurns > 0) {
+      stunnedForTurns -= 1;
+    }
+
     const canAttack =
       m.position !== "DEF" &&
-      (!m.hasSummoningSickness || m.keywords.includes("RUSH"));
+      !hasSummoningSickness &&
+      stunnedForTurns === 0;
 
     return {
       ...m,
       hasSummoningSickness,
+      stunnedForTurns,
       canAttack,
     };
   });
@@ -638,6 +795,7 @@ function playCardFromHand(
   }
 
   let newActing: PlayerState = { ...acting };
+  let newOther: PlayerState = { ...other };
   newActing.hand = newActing.hand.filter((_, idx) => idx !== handIndex);
   newActing.mana -= card.manaCost;
   const log = [...state.log];
@@ -651,76 +809,172 @@ function playCardFromHand(
       ...card,
       hasSummoningSickness,
       canAttack,
+      stunnedForTurns: 0,
     };
     newActing.board = [...newActing.board, monster];
     log.push(`${acting.label} played ${monster.name} (${monster.position})`);
   } else if (card.kind === "SPELL") {
-    if (card.effect === "DAMAGE_HERO") {
-      let targetHero = { ...other.hero };
-      let remaining = card.value;
-      if (targetHero.armor > 0) {
-        const absorbed = Math.min(targetHero.armor, remaining);
-        targetHero.armor -= absorbed;
-        remaining -= absorbed;
+    switch (card.effect) {
+      case "DAMAGE_HERO": {
+        let targetHero = { ...newOther.hero };
+        let remaining = card.value;
+        if (targetHero.armor > 0) {
+          const absorbed = Math.min(targetHero.armor, remaining);
+          targetHero.armor -= absorbed;
+          remaining -= absorbed;
+        }
+        if (remaining > 0) {
+          targetHero.hp -= remaining;
+        }
+        log.push(
+          `${acting.label} cast ${card.name} for ${card.value} damage to the Goalkeeper`
+        );
+        newOther = {
+          ...newOther,
+          hero: targetHero,
+        };
+        break;
       }
-      if (remaining > 0) {
-        targetHero.hp -= remaining;
+      case "HEAL_HERO": {
+        const healedHp = Math.min(
+          newActing.hero.maxHp,
+          newActing.hero.hp + card.value
+        );
+        newActing = {
+          ...newActing,
+          hero: { ...newActing.hero, hp: healedHp },
+        };
+        log.push(
+          `${acting.label} cast ${card.name} and healed ${card.value} HP on their Goalkeeper`
+        );
+        break;
       }
-      log.push(
-        `${acting.label} cast ${card.name} for ${card.value} hero damage`
-      );
-      const updatedOther: PlayerState = {
-        ...other,
-        hero: targetHero,
-      };
-      let next: BattleState =
-        playerKey === "player"
-          ? {
-              ...state,
-              player: newActing,
-              opponent: updatedOther,
-              log,
-            }
-          : {
-              ...state,
-              opponent: newActing,
-              player: updatedOther,
-              log,
-            };
+      case "SHIELD_HERO": {
+        // For SHIELD_HERO we treat value as a mix of armor and heal depending on magnitude
+        const armorGain = Math.floor(card.value * 0.6);
+        const healGain = card.value - armorGain;
+        const healedHp = Math.min(
+          newActing.hero.maxHp,
+          newActing.hero.hp + healGain
+        );
+        newActing = {
+          ...newActing,
+          hero: {
+            ...newActing.hero,
+            hp: healedHp,
+            armor: newActing.hero.armor + armorGain,
+          },
+        };
+        log.push(
+          `${acting.label} cast ${card.name}, gaining ${armorGain} armor and healing ${healGain} HP on their Goalkeeper`
+        );
+        break;
+      }
+      case "FORWARD_STUN": {
+        const forwards = newOther.board
+          .map((m, idx) => ({ m, idx }))
+          .filter(({ m }) => m.position === "FWD");
+        if (forwards.length === 0) {
+          log.push(
+            `${acting.label} cast ${card.name} but there were no enemy Forwards to tackle.`
+          );
+        } else {
+          // Pick the highest-attack Forward as the "selected" one
+          forwards.sort((a, b) => b.m.attack - a.m.attack);
+          const targetInfo = forwards[0];
+          const targetIdx = targetInfo.idx;
+          const target = { ...newOther.board[targetIdx] };
+          const currentStun = target.stunnedForTurns ?? 0;
+          target.stunnedForTurns = currentStun + card.value;
+          target.canAttack = false;
+          newOther.board = [...newOther.board];
+          newOther.board[targetIdx] = target;
 
-      if (next.player.hero.hp <= 0 && next.opponent.hero.hp <= 0) {
-        next = { ...next, winner: "DRAW" };
-      } else if (next.player.hero.hp <= 0) {
-        next = { ...next, winner: "opponent" };
-      } else if (next.opponent.hero.hp <= 0) {
-        next = { ...next, winner: "player" };
+          log.push(
+            `${acting.label} cast ${card.name}, stunning ${other.label}'s ${target.name} for the next turn.`
+          );
+        }
+        break;
       }
-      return next;
-    } else if (card.effect === "SHIELD_HERO") {
-      const newHero = {
-        ...acting.hero,
-        armor: acting.hero.armor + card.value,
-      };
-      newActing.hero = newHero;
-      log.push(
-        `${acting.label} cast ${card.name} for ${card.value} armor`
-      );
+      case "DRAW_CARDS": {
+        let tempActing = { ...newActing };
+        for (let i = 0; i < card.value; i++) {
+          tempActing = drawCard(tempActing);
+        }
+        newActing = tempActing;
+        log.push(
+          `${acting.label} cast ${card.name} and drew ${card.value} extra card(s)`
+        );
+        break;
+      }
     }
+
+    // After any spell, check if someone died
+    let nextAfterSpell: BattleState =
+      playerKey === "player"
+        ? {
+            ...state,
+            player: newActing,
+            opponent: newOther,
+            log,
+          }
+        : {
+            ...state,
+            opponent: newActing,
+            player: newOther,
+            log,
+          };
+
+    if (nextAfterSpell.player.hero.hp <= 0 && nextAfterSpell.opponent.hero.hp <= 0) {
+      nextAfterSpell = { ...nextAfterSpell, winner: "DRAW" };
+    } else if (nextAfterSpell.player.hero.hp <= 0) {
+      nextAfterSpell = { ...nextAfterSpell, winner: "opponent" };
+    } else if (nextAfterSpell.opponent.hero.hp <= 0) {
+      nextAfterSpell = { ...nextAfterSpell, winner: "player" };
+    }
+
+    return nextAfterSpell;
   }
 
   return playerKey === "player"
     ? {
         ...state,
         player: newActing,
-        opponent: other,
+        opponent: newOther,
         log,
       }
     : {
         ...state,
         opponent: newActing,
-        player: other,
+        player: newOther,
         log,
       };
+}
+
+// ---- Hero Power ----
+// 3 mana: draw 2 cards for the acting side.
+
+function useHeroPower(state: BattleState, playerKey: PlayerKey): BattleState {
+  if (state.winner) return state;
+
+  const acting = playerKey === "player" ? state.player : state.opponent;
+  const other = playerKey === "player" ? state.opponent : state.player;
+
+  if (acting.mana < HERO_POWER_COST) return state;
+
+  let newActing = { ...acting, mana: acting.mana - HERO_POWER_COST };
+  for (let i = 0; i < HERO_POWER_DRAW; i++) {
+    newActing = drawCard(newActing);
+  }
+
+  const log = [
+    ...state.log,
+    `${acting.label} used their Hero Power and drew ${HERO_POWER_DRAW} cards.`,
+  ];
+
+  return playerKey === "player"
+    ? { ...state, player: newActing, opponent: other, log }
+    : { ...state, opponent: newActing, player: other, log };
 }
 
 // ---- AI TURN: fixed to avoid infinite loop ----
@@ -818,8 +1072,10 @@ function createBattleFromBase(
   hero: HeroState
 ): BattleState {
   const monstersAsCards = xi.map(buildMonsterCard);
-  const spells = createSpellCards();
+  const spells = createSpellCards(); // 9 random spells
   const deck: BattleCard[] = shuffle([...monstersAsCards, ...spells]);
+  // NOTE: Deck has 10 monster cards + 9 spells = 19 drawables.
+  // Plus the GK hero on board gives you effectively 20 "pieces" in play.
 
   const playerDeck = [...deck];
   const opponentDeck = [...deck];
@@ -1156,7 +1412,7 @@ function BattleMatchInner() {
       return;
     }
 
-    // --- Single-player vs AI mode (unchanged behaviour) ---
+    // --- Single-player vs AI mode ---
     const next = createInitialBattleFromXI(xiOutfield, heroMonster);
     setSelectedAttacker(null);
     setActionMessage(null);
@@ -1206,7 +1462,7 @@ function BattleMatchInner() {
       return;
     }
     const m = battle.player.board[idx];
-       if (!m) return;
+    if (!m) return;
     if (!m.canAttack) {
       setActionMessage("This monster can’t attack right now.");
       return;
@@ -1318,6 +1574,24 @@ function BattleMatchInner() {
     });
   };
 
+  const handleHeroPowerClick = () => {
+    if (!battle) return;
+    if (battle.winner) return;
+    if (battle.active !== "player") {
+      setActionMessage("It is not your turn.");
+      return;
+    }
+    if (battle.player.mana < HERO_POWER_COST) {
+      setActionMessage(
+        `Not enough mana. Hero Power costs ${HERO_POWER_COST}.`
+      );
+      return;
+    }
+    setActionMessage(null);
+    setSelectedAttacker(null);
+    setBattle((prev) => (prev ? useHeroPower(prev, "player") : prev));
+  };
+
   const handleRestart = () => {
     if (deckSelection.length === OUTFIELD_REQUIRED && heroId) {
       const xiOutfield = collection.filter((m) =>
@@ -1389,7 +1663,7 @@ function BattleMatchInner() {
 
   // ---- Pre-game XI selection ----
   if (!battle && !isPvP) {
-    // Normal single-player vs AI flow (unchanged header text)
+    // Normal single-player vs AI flow
     return (
       <main className="space-y-4">
         <section className="space-y-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/60 p-4">
@@ -1469,7 +1743,7 @@ function BattleMatchInner() {
                 unlock a GK hero.
               </p>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={heroId ?? ""}
                   onChange={(e) =>
@@ -1496,6 +1770,24 @@ function BattleMatchInner() {
           {deckError && (
             <p className="mt-1 text-[11px] text-red-300">{deckError}</p>
           )}
+
+          {/* Start button */}
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={handleStartBattle}
+              disabled={
+                deckSelection.length !== OUTFIELD_REQUIRED || !heroId
+              }
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                deckSelection.length !== OUTFIELD_REQUIRED || !heroId
+                  ? "cursor-not-allowed bg-emerald-900 text-emerald-400/70"
+                  : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
+              }`}
+            >
+              Start Battle
+            </button>
+          </div>
         </section>
 
         <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
@@ -1551,23 +1843,6 @@ function BattleMatchInner() {
                 />
               );
             })}
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleStartBattle}
-              disabled={
-                deckSelection.length !== OUTFIELD_REQUIRED || !heroId
-              }
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                deckSelection.length !== OUTFIELD_REQUIRED || !heroId
-                  ? "cursor-not-allowed bg-slate-700 text-slate-400"
-                  : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
-              }`}
-            >
-              Start Battle
-            </button>
           </div>
         </section>
       </main>
@@ -1659,7 +1934,7 @@ function BattleMatchInner() {
                 unlock a GK hero.
               </p>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={heroId ?? ""}
                   onChange={(e) =>
@@ -1695,6 +1970,28 @@ function BattleMatchInner() {
               the match as soon as another manager is ready.
             </p>
           )}
+
+          {/* Find Match button */}
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={handleStartBattle}
+              disabled={
+                deckSelection.length !== OUTFIELD_REQUIRED ||
+                !heroId ||
+                isSearching
+              }
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                deckSelection.length !== OUTFIELD_REQUIRED ||
+                !heroId ||
+                isSearching
+                  ? "cursor-not-allowed bg-emerald-900 text-emerald-400/70"
+                  : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
+              }`}
+            >
+              {isSearching ? "Searching for opponent…" : "Find Online Match"}
+            </button>
+          </div>
         </section>
 
         <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
@@ -1750,27 +2047,6 @@ function BattleMatchInner() {
               );
             })}
           </div>
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleStartBattle}
-              disabled={
-                deckSelection.length !== OUTFIELD_REQUIRED ||
-                !heroId ||
-                isSearching
-              }
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                deckSelection.length !== OUTFIELD_REQUIRED ||
-                !heroId ||
-                isSearching
-                  ? "cursor-not-allowed bg-slate-700 text-slate-400"
-                  : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
-              }`}
-            >
-              {isSearching ? "Searching for opponent…" : "Find Online Match"}
-            </button>
-          </div>
         </section>
       </main>
     );
@@ -1802,7 +2078,7 @@ function BattleMatchInner() {
       `}</style>
 
       <main className="space-y-4">
-        {/* Top controls: mana + timer + End Turn + Restart */}
+        {/* Top controls: mana + timer + Hero Power + End Turn + Restart */}
         <section className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <p className="text-[11px] text-slate-300">
@@ -1881,6 +2157,19 @@ function BattleMatchInner() {
           <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
+              disabled={
+                !!battle!.winner ||
+                battle!.active !== "player" ||
+                battle!.player.mana < HERO_POWER_COST
+              }
+              onClick={handleHeroPowerClick}
+              className="rounded-full border border-emerald-500/70 px-3 py-1.5 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Hero Power (3 Mana)
+            </button>
+
+            <button
+              type="button"
               disabled={!!battle!.winner}
               onClick={handleEndTurn}
               className="rounded-full border border-slate-500/70 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-500/20 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1927,18 +2216,16 @@ function BattleMatchInner() {
                   </div>
                 </div>
                 <p className="text-[11px] font-semibold text-emerald-100">
-                  Opponent Goalkeeper
+                  {battle!.opponent.hero.name}
                 </p>
               </div>
               <HeroHealth hero={battle!.opponent.hero} />
             </button>
 
             {/* Opponent board */}
-            <div className="flex flex-wrap justify-center gap-3">
+            <div className="flex min-h-[3rem] flex-wrap justify-center gap-3">
               {opponentBoard.length === 0 ? (
-                <p className="text-[11px] text-emerald-200">
-                  No monsters in the opponent half.
-                </p>
+                <div className="h-4" />
               ) : (
                 opponentBoard.map((m, idx) => (
                   <BattleMonsterCardView
@@ -1961,11 +2248,9 @@ function BattleMatchInner() {
             </div>
 
             {/* Player board */}
-            <div className="flex flex-wrap justify-center gap-3">
+            <div className="flex min-h-[3rem] flex-wrap justify-center gap-3">
               {playerBoard.length === 0 ? (
-                <p className="text-[11px] text-emerald-200">
-                  No monsters in your half. Play one from your hand.
-                </p>
+                <div className="h-4" />
               ) : (
                 playerBoard.map((m, idx) => (
                   <BattleMonsterCardView
@@ -1995,7 +2280,7 @@ function BattleMatchInner() {
                   </div>
                 </div>
                 <p className="text-[11px] font-semibold text-emerald-100">
-                  Your Goalkeeper
+                  {battle!.player.hero.name}
                 </p>
               </div>
               <HeroHealth hero={battle!.player.hero} />
@@ -2120,6 +2405,8 @@ function BattleMonsterCardView(props: {
   const health = card.health;
   const canAttackNow = card.canAttack && card.position !== "DEF";
 
+  const isStunned = (card.stunnedForTurns ?? 0) > 0;
+
   return (
     <div
       onClick={onClick}
@@ -2139,13 +2426,6 @@ function BattleMonsterCardView(props: {
 
         {/* Dark gradient */}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-slate-950/10" />
-
-        {/* Mana crystal */}
-        <div className="absolute -top-2 left-1/2 flex h-7 w-7 -translate-x-1/2 items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 shadow">
-          <span className="text-[11px] font-bold text-slate-950">
-            {card.manaCost}
-          </span>
-        </div>
 
         {/* Position chip */}
         <div
@@ -2168,28 +2448,46 @@ function BattleMonsterCardView(props: {
           ))}
         </div>
 
-        {/* Attack & health */}
-        <div className="absolute bottom-1 left-1 flex h-7 w-7 items-center justify-center rounded-full border border-emerald-400/80 bg-emerald-900/90">
-          <span className="text-[11px] font-bold text-emerald-300">
-            {attack}
-          </span>
-        </div>
-        <div className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-red-400/80 bg-red-900/90">
-          <span className="text-[11px] font-bold text-red-300">
-            {health}
-          </span>
-        </div>
+        {/* Evo mini text (moved a bit up to avoid bottom row) */}
+        {typeof card.evolutionLevel === "number" &&
+          card.evolutionLevel > 0 && (
+            <div className="absolute bottom-9 left-1/2 -translate-x-1/2 text-center text-[9px] text-slate-200">
+              Evo {card.evolutionLevel}
+            </div>
+          )}
 
-        {/* Evo mini text */}
-        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-center text-[9px] text-slate-200">
-          {typeof card.evolutionLevel === "number" &&
-            card.evolutionLevel > 0 && <div>Evo {card.evolutionLevel}</div>}
+        {/* Bottom row: Attack / Mana / Health */}
+        <div className="absolute inset-x-1 bottom-1 flex items-center justify-between gap-1">
+          {/* Attack */}
+          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-400/80 bg-emerald-900/90">
+            <span className="text-[11px] font-bold text-emerald-300">
+              {attack}
+            </span>
+          </div>
+
+          {/* Mana pill (blue) in the bottom middle */}
+          <div className="flex min-w-[1.9rem] items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 px-2 shadow">
+            <span className="text-[11px] font-bold text-slate-950">
+              {card.manaCost}
+            </span>
+          </div>
+
+          {/* Health */}
+          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-red-400/80 bg-red-900/90">
+            <span className="text-[11px] font-bold text-red-300">
+              {health}
+            </span>
+          </div>
         </div>
 
         {/* Status overlay */}
-        {showStatusOverlay && !canAttackNow && (
+        {showStatusOverlay && (!canAttackNow || isStunned) && (
           <div className="pointer-events-none absolute inset-0 flex items-end justify-center rounded-2xl bg-slate-950/35 pb-1">
-            {card.hasSummoningSickness ? (
+            {isStunned ? (
+              <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-amber-100">
+                Stunned
+              </span>
+            ) : card.hasSummoningSickness ? (
               <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-emerald-100">
                 Summoning sickness
               </span>
@@ -2255,7 +2553,11 @@ function renderHand(
       );
     }
 
-    // Spell card
+    // Spell card – use art if provided
+    const spell = card as BattleSpellCard;
+    const spellArtUrl =
+      spell.artUrl || "/cards/spells/default-spell.png";
+
     return (
       <button
         key={card.id}
@@ -2263,22 +2565,34 @@ function renderHand(
         onClick={() => !isDisabled && onPlay(idx)}
         disabled={isDisabled}
         style={dealStyle}
-        className={`relative h-28 w-20 rounded-2xl border px-2 py-2 text-left text-[11px] transition bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 ${
+        className={`relative h-28 w-20 overflow-hidden rounded-2xl border text-left text-[11px] transition bg-slate-900 ${
           isDisabled
             ? "cursor-not-allowed border-slate-800 opacity-50"
             : "border-purple-500/70 hover:border-emerald-400"
         }`}
       >
-        <div className="absolute -top-2 left-1/2 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 shadow">
+        {/* Art background */}
+        <div className="absolute inset-0">
+          <img
+            src={spellArtUrl}
+            alt={spell.name}
+            className="h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-950/40 via-slate-950/60 to-slate-950/90" />
+        </div>
+
+        {/* Mana crystal (still at top for spells – only monsters changed) */}
+        <div className="absolute -top-2 left-1/2 z-10 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 shadow">
           <span className="text-[10px] font-bold text-slate-950">
-            {card.manaCost}
+            {spell.manaCost}
           </span>
         </div>
-        <div className="mt-3 leading-tight text-slate-50 line-clamp-2">
-          {card.name}
+
+        <div className="relative z-10 mt-3 px-2 leading-tight text-slate-50 line-clamp-2">
+          {spell.name}
         </div>
-        <div className="mt-1 text-[10px] text-slate-300 line-clamp-4">
-          {card.description}
+        <div className="relative z-10 mt-1 px-2 text-[10px] text-slate-300 line-clamp-4">
+          {spell.description}
         </div>
       </button>
     );
@@ -2293,39 +2607,109 @@ function DeckSelectionCard(props: {
 }) {
   const { monster, selected, disabled, onToggle } = props;
 
-  const mc: MonsterCardMonster = {
-    displayName: monster.displayName,
-    realPlayerName: monster.realPlayerName,
-    position: monster.position,
-    club: monster.club,
-    rarity: monster.rarity,
-    baseAttack: monster.baseAttack,
-    baseMagic: monster.baseMagic,
-    baseDefense: monster.baseDefense,
-    evolutionLevel: monster.evolutionLevel,
-    artUrl: getArtUrlForMonster(monster),
-    hoverArtUrl: undefined,
-    setCode: monster.setCode ?? undefined,
-    editionType: monster.editionType ?? undefined,
-    serialNumber: monster.serialNumber ?? undefined,
-    editionLabel: monster.editionLabel ?? undefined,
-  };
+  const artUrl = getArtUrlForMonster(monster);
+
+  const positionColor = (() => {
+    switch (monster.position) {
+      case "GK":
+        return "bg-emerald-700/90";
+      case "DEF":
+        return "bg-sky-700/90";
+      case "MID":
+        return "bg-purple-700/90";
+      case "FWD":
+        return "bg-rose-700/90";
+      default:
+        return "bg-slate-700/90";
+    }
+  })();
+
+  const rarityText =
+    monster.rarity && monster.rarity.length > 0
+      ? monster.rarity.toUpperCase()
+      : "";
 
   return (
     <button
       type="button"
       onClick={onToggle}
       disabled={disabled && !selected}
-      className={`flex flex-col justify-between gap-2 rounded-xl border p-2 text-left text-xs transition ${
+      className={`relative overflow-hidden rounded-2xl border text-left text-xs transition ${
         selected
-          ? "border-emerald-400 bg-emerald-500/10"
+          ? "border-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-400/70"
           : disabled
-          ? "cursor-not-allowed border-slate-800 bg-slate-950/40 opacity-50"
-          : "border-slate-700 bg-slate-950/60 hover:border-emerald-400"
+          ? "cursor-not-allowed border-slate-800 bg-slate-950/60 opacity-60"
+          : "border-slate-700 bg-slate-950/80 hover:border-emerald-400"
       }`}
     >
-      <div className="w-full">
-        <MonsterCard monster={mc} />
+      <div className="relative h-52 w-full bg-slate-950">
+        {/* Full monster art – no crop (object-contain) */}
+        <img
+          src={artUrl}
+          alt={monster.displayName || monster.realPlayerName}
+          className="h-full w-full object-contain"
+        />
+
+        {/* Soft overlay for text readability */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/20 to-slate-950/10" />
+
+        {/* Position chip */}
+        <div
+          className={`absolute left-2 top-2 rounded-full px-2 py-0.5 ${positionColor}`}
+        >
+          <span className="text-[9px] font-semibold uppercase text-slate-50">
+            {monster.position}
+          </span>
+        </div>
+
+        {/* Rarity tag */}
+        {rarityText && (
+          <div className="absolute right-2 top-2 rounded-full bg-slate-950/80 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-200">
+            {rarityText}
+          </div>
+        )}
+
+        {/* Name + club */}
+        <div className="absolute inset-x-2 bottom-11 space-y-0.5">
+          <p className="line-clamp-1 text-[10px] font-semibold text-slate-50">
+            {monster.displayName || monster.realPlayerName}
+          </p>
+          <p className="line-clamp-1 text-[9px] text-slate-300">
+            {monster.club}
+          </p>
+          {monster.evolutionLevel > 0 && (
+            <p className="text-[9px] text-indigo-300">
+              Evo {monster.evolutionLevel}
+            </p>
+          )}
+        </div>
+
+        {/* ATK pill */}
+        <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-emerald-900/90 px-2 py-0.5">
+          <span className="text-[9px] font-semibold uppercase text-emerald-200">
+            ATK
+          </span>
+          <span className="text-[11px] font-bold text-emerald-50">
+            {monster.baseAttack}
+          </span>
+        </div>
+
+        {/* DEF pill */}
+        <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-red-900/90 px-2 py-0.5">
+          <span className="text-[9px] font-semibold uppercase text-red-200">
+            DEF
+          </span>
+          <span className="text-[11px] font-bold text-red-50">
+            {monster.baseDefense}
+          </span>
+        </div>
+
+        {/* Selected badge */}
+        {selected && (
+          <div className="absolute left-1/2 top-2 -translate-x-1/2 rounded-full bg-emerald-500/80 px-2 py-0.5 text-[9px] font-semibold text-slate-950">
+            In XI
+          </div>
+        )}
       </div>
     </button>
   );

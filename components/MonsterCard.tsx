@@ -21,9 +21,9 @@ export type MonsterCardMonster = {
   hoverArtUrl?: string;
 
   setCode?: string;
-  editionType?: string;     // "BASE" | "THEMED" | "LIMITED"
-  serialNumber?: number;    // 1–10 for limiteds
-  editionLabel?: string;    // e.g. "1 of 10"
+  editionType?: string; // "BASE" | "THEMED" | "LIMITED"
+  serialNumber?: number; // 1–10 for limiteds
+  editionLabel?: string; // e.g. "1 of 10"
 };
 
 export type ActiveChipInfo = {
@@ -119,7 +119,7 @@ export default function MonsterCard({
         {/* ART AREA */}
         {hasArt && (
           <div className="mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4]">
-            {/* --- 🔥 POSITION BADGE --- */}
+            {/* POSITION BADGE */}
             <div className="absolute top-1 left-1 z-10 rounded-md bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300 shadow-sm">
               {monster.position}
             </div>
@@ -190,6 +190,22 @@ export default function MonsterCard({
             Evo Lv. {monster.evolutionLevel}
           </p>
         )}
+
+        {/* COMBAT STATS: ATTACK / DEFENCE */}
+        <div className="mt-2 grid grid-cols-2 gap-1 text-[10px] text-slate-200">
+          <div className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1">
+            <span className="font-semibold text-emerald-300">ATK</span>
+            <span className="font-mono font-semibold">
+              {monster.baseAttack}
+            </span>
+          </div>
+          <div className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1">
+            <span className="font-semibold text-red-300">DEF</span>
+            <span className="font-mono font-semibold">
+              {monster.baseDefense}
+            </span>
+          </div>
+        </div>
 
         {/* Edition line */}
         {editionText && (

@@ -26,6 +26,9 @@ type BattleMonsterCard = {
   hasSummoningSickness: boolean;
   canAttack: boolean;
 
+  // status
+  stunnedForTurns?: number;
+
   // visual data
   displayName?: string;
   realPlayerName?: string;
@@ -103,15 +106,13 @@ type ActionBody =
   | { action: "PLAY_CARD"; handIndex: number }
   | { action: "ATTACK_HERO"; attackerIndex: number }
   | { action: "ATTACK_MINION"; attackerIndex: number; targetIndex: number }
-  | { action: "END_TURN" };
+  | { action: "END_TURN" }
+  | { action: "HERO_POWER" };
 
 /** ---- Constants ---- */
 
 const TURN_DURATION = 30; // 30s per turn in PVP
-
-function findTaunts(board: BattleMonsterCard[]): boolean {
-  return board.some((m) => m.keywords.includes("TAUNT"));
-}
+const HERO_POWER_COST = 3; // must match server hero power cost
 
 /** ---- Page component ---- */
 
@@ -383,13 +384,15 @@ export default function OnlineBattlePage() {
       return;
     }
 
-    const opponentHasTaunt = findTaunts(opp.board);
+    const opponentHasDefender = opp.board.some(
+      (m) => m.position === "DEF"
+    );
 
-    // GLOBAL RULE: If the opponent has any defender (Taunt),
+    // GLOBAL RULE: If the opponent has any DEF on board,
     // you MUST attack defenders before the Goalkeeper.
-    if (opponentHasTaunt) {
+    if (opponentHasDefender) {
       setActionMessage(
-        "You must attack a defender before you can attack the Goalkeeper."
+        "You must attack the defenders before you can target the Goalkeeper."
       );
       return;
     }
@@ -436,8 +439,10 @@ export default function OnlineBattlePage() {
       return;
     }
 
-    const opponentHasTaunt = findTaunts(opp.board);
-    if (opponentHasTaunt && !enemy.keywords.includes("TAUNT")) {
+    const opponentHasDefender = opp.board.some(
+      (m) => m.position === "DEF"
+    );
+    if (opponentHasDefender && enemy.position !== "DEF") {
       setActionMessage(
         "While defenders are on the pitch, you must target a defender."
       );
@@ -465,6 +470,29 @@ export default function OnlineBattlePage() {
     setSelectedAttacker(null);
     setActionMessage(null);
     void sendAction({ action: "END_TURN" });
+  };
+
+  const handleHeroPowerClick = () => {
+    if (!battle || !match) return;
+    if (battle.winner) return;
+
+    if (!isMyTurn || match.status !== "IN_PROGRESS") {
+      setActionMessage("It is not your turn.");
+      return;
+    }
+
+    const me = mySide === "player" ? battle.player : battle.opponent;
+
+    if (me.mana < HERO_POWER_COST) {
+      setActionMessage(
+        `Not enough mana. Hero Power costs ${HERO_POWER_COST}.`
+      );
+      return;
+    }
+
+    setSelectedAttacker(null);
+    setActionMessage(null);
+    void sendAction({ action: "HERO_POWER" });
   };
 
   const handleClearSelection = () => {
@@ -641,7 +669,7 @@ export default function OnlineBattlePage() {
           </div>
         </section>
 
-        {/* Turn + controls (same look as single-player) */}
+        {/* Turn + controls (same look as single-player, with Hero Power) */}
         {battle && myPlayer && (
           <section className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
@@ -722,6 +750,15 @@ export default function OnlineBattlePage() {
             <div className="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
+                onClick={handleHeroPowerClick}
+                disabled={!canAct || myPlayer.mana < HERO_POWER_COST}
+                className="rounded-full border border-emerald-500/70 px-3 py-1.5 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Hero Power (3 Mana)
+              </button>
+
+              <button
+                type="button"
                 onClick={handleEndTurn}
                 disabled={!canAct}
                 className="rounded-full border border-slate-500/70 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-500/20 disabled:cursor-not-allowed disabled:opacity-40"
@@ -770,22 +807,16 @@ export default function OnlineBattlePage() {
                     </div>
                   </div>
                   <p className="text-[11px] font-semibold text-emerald-100">
-                    Opponent Goalkeeper
-                  </p>
-                  <p className="text-[10px] text-emerald-200">
-                    Click with a selected attacker to shoot. If a defender
-                    (Taunt) is on the pitch, you must clear them first.
+                    {enemyPlayer.hero.name}
                   </p>
                 </div>
                 <HeroHealth hero={enemyPlayer.hero} />
               </button>
 
               {/* Opponent half */}
-              <div className="flex flex-wrap justify-center gap-3">
+              <div className="flex min-h-[3rem] flex-wrap justify-center gap-3">
                 {opponentBoard.length === 0 ? (
-                  <p className="text-[11px] text-emerald-200">
-                    No monsters in the opponent half.
-                  </p>
+                  <div className="h-4" />
                 ) : (
                   opponentBoard.map((m, idx) => (
                     <BattleMonsterCardView
@@ -805,11 +836,9 @@ export default function OnlineBattlePage() {
               </div>
 
               {/* Your half */}
-              <div className="flex flex-wrap justify-center gap-3">
+              <div className="flex min-h-[3rem] flex-wrap justify-center gap-3">
                 {playerBoard.length === 0 ? (
-                  <p className="text-[11px] text-emerald-200">
-                    No monsters in your half. Play one from your hand.
-                  </p>
+                  <div className="h-4" />
                 ) : (
                   playerBoard.map((m, idx) => (
                     <BattleMonsterCardView
@@ -839,7 +868,7 @@ export default function OnlineBattlePage() {
                     </div>
                   </div>
                   <p className="text-[11px] font-semibold text-emerald-100">
-                    Your Goalkeeper
+                    {myPlayer.hero.name}
                   </p>
                 </div>
                 <HeroHealth hero={myPlayer.hero} />
@@ -965,8 +994,8 @@ function BattleMonsterCardView(props: {
 
   const attack = card.attack;
   const health = card.health;
-
   const canAttackNow = card.canAttack && card.position !== "DEF";
+  const isStunned = (card.stunnedForTurns ?? 0) > 0;
 
   return (
     <div
@@ -985,17 +1014,10 @@ function BattleMonsterCardView(props: {
           className="absolute inset-0 h-full w-full object-cover"
         />
 
-        {/* Dark gradient for readability */}
+        {/* Dark gradient */}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-slate-950/10" />
 
-        {/* Mana crystal top center */}
-        <div className="absolute -top-2 left-1/2 flex h-7 w-7 -translate-x-1/2 items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 shadow">
-          <span className="text-[11px] font-bold text-slate-950">
-            {card.manaCost}
-          </span>
-        </div>
-
-        {/* Position chip top-left */}
+        {/* Position chip */}
         <div
           className={`absolute left-1 top-1 rounded-full px-2 py-0.5 ${positionColor}`}
         >
@@ -1004,7 +1026,7 @@ function BattleMonsterCardView(props: {
           </span>
         </div>
 
-        {/* Keywords top-right */}
+        {/* Keywords */}
         <div className="absolute right-1 top-1 flex flex-col items-end gap-0.5">
           {card.keywords.map((kw) => (
             <span
@@ -1016,28 +1038,46 @@ function BattleMonsterCardView(props: {
           ))}
         </div>
 
-        {/* Attack & health bottom corners */}
-        <div className="absolute bottom-1 left-1 flex h-7 w-7 items-center justify-center rounded-full border border-emerald-400/80 bg-emerald-900/90">
-          <span className="text-[11px] font-bold text-emerald-300">
-            {attack}
-          </span>
-        </div>
-        <div className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-red-400/80 bg-red-900/90">
-          <span className="text-[11px] font-bold text-red-300">
-            {health}
-          </span>
-        </div>
+        {/* Evo mini text (above bottom row) */}
+        {typeof card.evolutionLevel === "number" &&
+          card.evolutionLevel > 0 && (
+            <div className="absolute bottom-9 left-1/2 -translate-x-1/2 text-center text-[9px] text-slate-200">
+              Evo {card.evolutionLevel}
+            </div>
+          )}
 
-        {/* Evo mini text bottom center */}
-        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-center text-[9px] text-slate-200">
-          {typeof card.evolutionLevel === "number" &&
-            card.evolutionLevel > 0 && <div>Evo {card.evolutionLevel}</div>}
+        {/* Bottom row: Attack / Mana / Health */}
+        <div className="absolute inset-x-1 bottom-1 flex items-center justify-between gap-1">
+          {/* Attack */}
+          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-400/80 bg-emerald-900/90">
+            <span className="text-[11px] font-bold text-emerald-300">
+              {attack}
+            </span>
+          </div>
+
+          {/* Mana pill in the middle */}
+          <div className="flex min-w-[1.9rem] items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 px-2 shadow">
+            <span className="text-[11px] font-bold text-slate-950">
+              {card.manaCost}
+            </span>
+          </div>
+
+          {/* Health */}
+          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-red-400/80 bg-red-900/90">
+            <span className="text-[11px] font-bold text-red-300">
+              {health}
+            </span>
+          </div>
         </div>
 
         {/* Status overlay */}
-        {showStatusOverlay && !canAttackNow && (
+        {showStatusOverlay && (!canAttackNow || isStunned) && (
           <div className="pointer-events-none absolute inset-0 flex items-end justify-center rounded-2xl bg-slate-950/35 pb-1">
-            {card.hasSummoningSickness ? (
+            {isStunned ? (
+              <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-amber-100">
+                Stunned
+              </span>
+            ) : card.hasSummoningSickness ? (
               <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-emerald-100">
                 Summoning sickness
               </span>

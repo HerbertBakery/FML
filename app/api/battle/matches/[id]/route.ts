@@ -7,6 +7,7 @@ import {
   applyAttack,
   playCardFromHand,
   advanceTurn,
+  useHeroPower,
   type BattleState,
 } from "@/lib/battleEngineServer";
 
@@ -21,7 +22,8 @@ type ActionBody =
       attackerIndex: number;
       targetIndex: number;
     }
-  | { action: "END_TURN" };
+  | { action: "END_TURN" }
+  | { action: "HERO_POWER" };
 
 // Small helper to shape response
 function serializeMatch(
@@ -317,6 +319,12 @@ export async function POST(
         );
       }
       state = advanceTurn(state);
+      break;
+    }
+
+    case "HERO_POWER": {
+      // Hero Power uses shared engine logic (draw 2 for 3 mana)
+      state = useHeroPower(state, yourSide);
       break;
     }
 
