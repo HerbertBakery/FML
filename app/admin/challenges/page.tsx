@@ -1,4 +1,3 @@
-// app/admin/challenges/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -90,15 +89,15 @@ export default function AdminChallengesPage() {
           "x-admin-secret": adminSecret,
         },
       });
-      const json = (await res.json()) as ListResponse;
+      const json = (await res.json().catch(() => null)) as ListResponse | null;
 
       if (!res.ok) {
-        setError(json.error || "Failed to load challenges.");
+        setError(json?.error || "Failed to load challenges.");
         setChallenges([]);
         return;
       }
 
-      setChallenges(json.challenges || []);
+      setChallenges(json?.challenges || []);
     } catch {
       setError("Failed to load challenges.");
       setChallenges([]);
@@ -111,6 +110,7 @@ export default function AdminChallengesPage() {
     if (unlocked) {
       void loadChallenges();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked]);
 
   function fillFormFromChallenge(c: Challenge) {
@@ -146,9 +146,9 @@ export default function AdminChallengesPage() {
           "x-admin-secret": adminSecret,
         },
       });
-      const json = (await res.json()) as SingleResponse;
-      if (!res.ok || !json.challenge) {
-        setFormError(json.error || "Failed to load challenge.");
+      const json = (await res.json().catch(() => null)) as SingleResponse | null;
+      if (!res.ok || !json?.challenge) {
+        setFormError(json?.error || "Failed to load challenge.");
         return;
       }
       fillFormFromChallenge(json.challenge);
@@ -267,14 +267,42 @@ export default function AdminChallengesPage() {
     return parts.join(" • ");
   }
 
-  function handleUnlock(e: React.FormEvent) {
+  async function handleUnlock(e: React.FormEvent) {
     e.preventDefault();
     setUnlockError(null);
-    if (!adminSecret.trim()) {
+
+    const secret = adminSecret.trim();
+    if (!secret) {
       setUnlockError("Enter the admin password.");
       return;
     }
-    setUnlocked(true);
+
+    setLoading(true);
+    try {
+      // Backend decides if this password is valid.
+      const res = await fetch("/api/admin/challenges", {
+        credentials: "include",
+        headers: {
+          "x-admin-secret": secret,
+        },
+      });
+      const json = (await res.json().catch(() => null)) as ListResponse | null;
+
+      if (!res.ok) {
+        setUnlocked(false);
+        setChallenges([]);
+        setUnlockError(json?.error || "Invalid admin password.");
+        return;
+      }
+
+      setUnlocked(true);
+      setChallenges(json?.challenges || []);
+    } catch {
+      setUnlockError("Network error verifying admin password.");
+      setUnlocked(false);
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (!unlocked) {
@@ -315,7 +343,7 @@ export default function AdminChallengesPage() {
   return (
     <main className="space-y-6">
       <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify_between gap-4">
           <div>
             <h1 className="text-xl font-semibold mb-1">
               Admin – Squad Builder Challenges
@@ -467,7 +495,8 @@ export default function AdminChallengesPage() {
               <option value="LEGENDARY">LEGENDARY</option>
             </select>
             <p className="text-[10px] text-slate-500">
-              Monsters must be at least this rarity (e.g. EPIC = EPIC or LEGENDARY).
+              Monsters must be at least this rarity (e.g. EPIC = EPIC or
+              LEGENDARY).
             </p>
           </div>
 
@@ -533,8 +562,8 @@ export default function AdminChallengesPage() {
               <option value="chip">chip</option>
             </select>
             <p className="text-[10px] text-slate-500">
-              "chip" will grant evolution chips (using its code) when players complete
-              this SBC.
+              "chip" will grant evolution chips (using its code) when players
+              complete this SBC.
             </p>
           </div>
 
@@ -553,9 +582,9 @@ export default function AdminChallengesPage() {
               }
             />
             <p className="text-[10px] text-slate-500">
-              For <span className="font-mono">coins</span>, use a number (e.g. 500).{" "}
-              For <span className="font-mono">chip</span>, use a chip code or
-              <span className="font-mono"> CODE:xN</span> (e.g.{" "}
+              For <span className="font-mono">coins</span>, use a number (e.g.
+              500). For <span className="font-mono">chip</span>, use a chip code
+              or<span className="font-mono"> CODE:xN</span> (e.g.{" "}
               <span className="font-mono">GOAL_SURGE:x3</span>).
             </p>
           </div>
@@ -568,7 +597,10 @@ export default function AdminChallengesPage() {
               onChange={(e) => setIsRepeatable(e.target.checked)}
               className="h-3 w-3 rounded border-slate-600 bg-slate-950"
             />
-            <label htmlFor="isRepeatable" className="text-[11px] text-slate-300">
+            <label
+              htmlFor="isRepeatable"
+              className="text-[11px] text-slate-300"
+            >
               Repeatable (users can complete this challenge multiple times)
             </label>
           </div>

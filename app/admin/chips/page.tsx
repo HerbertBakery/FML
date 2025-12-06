@@ -1,4 +1,3 @@
-// app/admin/chips/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -177,15 +176,15 @@ export default function AdminChipsPage() {
         },
       });
 
-      const json = (await res.json()) as ListResponse;
+      const json = (await res.json().catch(() => null)) as ListResponse | null;
 
       if (!res.ok) {
-        setError(json.error || "Failed to load chips.");
+        setError(json?.error || "Failed to load chips.");
         setChips([]);
         return;
       }
 
-      setChips(json.chips || []);
+      setChips(json?.chips || []);
     } catch {
       setError("Failed to load chips.");
       setChips([]);
@@ -196,6 +195,7 @@ export default function AdminChipsPage() {
 
   useEffect(() => {
     if (unlocked) loadChips();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked]);
 
   // ---------------------
@@ -219,10 +219,10 @@ export default function AdminChipsPage() {
         },
       });
 
-      const json = (await res.json()) as SingleResponse;
+      const json = (await res.json().catch(() => null)) as SingleResponse | null;
 
-      if (!res.ok || !json.chip) {
-        setFormError(json.error || "Failed to load chip.");
+      if (!res.ok || !json?.chip) {
+        setFormError(json?.error || "Failed to load chip.");
         return;
       }
 
@@ -369,6 +369,44 @@ export default function AdminChipsPage() {
   // Unlock screen
   // ---------------------
 
+  async function handleUnlock(e: React.FormEvent) {
+    e.preventDefault();
+    setUnlockError(null);
+
+    const secret = adminSecret.trim();
+    if (!secret) {
+      setUnlockError("Enter admin password.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/chips/index", {
+        credentials: "include",
+        headers: {
+          "x-admin-secret": secret,
+        },
+      });
+
+      const json = (await res.json().catch(() => null)) as ListResponse | null;
+
+      if (!res.ok) {
+        setUnlocked(false);
+        setChips([]);
+        setUnlockError(json?.error || "Invalid admin password.");
+        return;
+      }
+
+      setUnlocked(true);
+      setChips(json?.chips || []);
+    } catch {
+      setUnlockError("Network error verifying admin password.");
+      setUnlocked(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   if (!unlocked) {
     return (
       <main className="max-w-md mx-auto mt-10 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
@@ -377,17 +415,7 @@ export default function AdminChipsPage() {
           Enter the admin password to manage chip templates.
         </p>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!adminSecret.trim()) {
-              setUnlockError("Enter admin password.");
-              return;
-            }
-            setUnlocked(true);
-          }}
-          className="space-y-3"
-        >
+        <form onSubmit={handleUnlock} className="space-y-3">
           <div>
             <label className="block text-[11px] text-slate-300 mb-1">
               Admin password
@@ -497,7 +525,7 @@ export default function AdminChipsPage() {
 
       {/* Builder form */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-        <h2 className="text-sm font-semibold mb-3">
+        <h2 className="text-sm font-semibold text-slate-100 mb-3">
           {selectedId ? "Edit Chip" : "Create New Chip"}
         </h2>
 
@@ -563,7 +591,9 @@ export default function AdminChipsPage() {
           {/* ParameterInt IF needed */}
           {CONDITIONS_REQUIRING_INT.has(conditionType) && (
             <div>
-              <label className="text-[11px] text-slate-300">Required Value</label>
+              <label className="text-[11px] text-slate-300">
+                Required Value
+              </label>
               <input
                 type="number"
                 value={parameterInt ?? ""}

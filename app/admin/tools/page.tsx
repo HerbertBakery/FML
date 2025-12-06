@@ -1,4 +1,3 @@
-// app/admin/tools/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -17,6 +16,10 @@ type CurrentGameweek = {
   name: string | null;
   deadlineAt: string;
   isActive: boolean;
+};
+
+type ChallengesProbeResponse = {
+  error?: string;
 };
 
 export default function AdminToolsPage() {
@@ -186,7 +189,9 @@ export default function AdminToolsPage() {
 
     const trimmedGw = deadlineGwInput.trim();
     if (!trimmedGw) {
-      setDeadlineErrorMsg("Enter the gameweek number whose deadline you want to edit.");
+      setDeadlineErrorMsg(
+        "Enter the gameweek number whose deadline you want to edit."
+      );
       return;
     }
     const parsedGw = parseInt(trimmedGw, 10);
@@ -233,14 +238,40 @@ export default function AdminToolsPage() {
     }
   }
 
-  function handleUnlock(e: React.FormEvent) {
+  async function handleUnlock(e: React.FormEvent) {
     e.preventDefault();
     setUnlockError(null);
-    if (!adminSecret.trim()) {
+
+    const secret = adminSecret.trim();
+    if (!secret) {
       setUnlockError("Enter the admin password.");
       return;
     }
-    setUnlocked(true);
+
+    try {
+      // Use challenges endpoint as a "probe" to validate the admin secret.
+      const res = await fetch("/api/admin/challenges", {
+        credentials: "include",
+        headers: {
+          "x-admin-secret": secret,
+        },
+      });
+
+      const json = (await res.json().catch(() => null)) as
+        | ChallengesProbeResponse
+        | null;
+
+      if (!res.ok) {
+        setUnlocked(false);
+        setUnlockError(json?.error || "Invalid admin password.");
+        return;
+      }
+
+      setUnlocked(true);
+    } catch {
+      setUnlockError("Network error verifying admin password.");
+      setUnlocked(false);
+    }
   }
 
   if (!unlocked) {
@@ -281,7 +312,8 @@ export default function AdminToolsPage() {
       <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
         <h2 className="text-xl font-semibold mb-2">Admin Tools</h2>
         <p className="text-sm text-slate-300">
-          Manage gameweeks and trigger real FPL-based scoring and monster evolution.
+          Manage gameweeks and trigger real FPL-based scoring and monster
+          evolution.
         </p>
       </section>
 
@@ -311,7 +343,8 @@ export default function AdminToolsPage() {
           </div>
         ) : (
           <p className="text-xs text-slate-300">
-            No gameweek found yet. Hitting this endpoint will create GW 1 as active.
+            No gameweek found yet. Hitting this endpoint will create GW 1 as
+            active.
           </p>
         )}
       </section>
@@ -321,8 +354,8 @@ export default function AdminToolsPage() {
           Set current active gameweek
         </h3>
         <p className="text-xs text-slate-300 mb-1">
-          Use this to switch which gameweek is considered &quot;current&quot; for
-          squad locking and (if no GW is passed) scoring from FPL.
+          Use this to switch which gameweek is considered &quot;current&quot;
+          for squad locking and (if no GW is passed) scoring from FPL.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
@@ -365,8 +398,8 @@ export default function AdminToolsPage() {
           Update gameweek deadline
         </h3>
         <p className="text-xs text-slate-300 mb-1">
-          Set or adjust the deadline for any gameweek. This is what the squad-locking
-          endpoint checks.
+          Set or adjust the deadline for any gameweek. This is what the
+          squad-locking endpoint checks.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
@@ -456,10 +489,14 @@ export default function AdminToolsPage() {
               <p className="text-red-400 mb-1">{scoreResult.error}</p>
             )}
             {scoreResult.message && (
-              <p className="text-emerald-300 mb-1">{scoreResult.message}</p>
+              <p className="text-emerald-300 mb-1">
+                {scoreResult.message}
+              </p>
             )}
             {typeof scoreResult.gameweekNumber === "number" && (
-              <p className="text-slate-300">Gameweek: {scoreResult.gameweekNumber}</p>
+              <p className="text-slate-300">
+                Gameweek: {scoreResult.gameweekNumber}
+              </p>
             )}
             {typeof scoreResult.entriesProcessed === "number" && (
               <p className="text-slate-300">
