@@ -116,6 +116,9 @@ model UserMonster {
 
   // NEW: chip assignments for specific gameweeks
   chipAssignments    MonsterChipAssignment[]
+
+  // 👉 NEW: ensure we never have two identical serials for the same template + edition
+  @@unique([templateCode, editionType, serialNumber])
 }
 
 model PackOpen {
@@ -487,22 +490,26 @@ model ChipTemplate {
   conditionType String
 
   // Optional rarity / position constraints for UI & validation
-  minRarity       String?
-  maxRarity       String?
+  minRarity        String?
+  maxRarity        String?
   allowedPositions String?                  // e.g. "FWD,MID"
 
-  // 👉 NEW FLEX FIELD FOR CONDITIONS (only change)
-  parameterInt    Int?
+  // 👉 FLEX FIELD FOR CONDITIONS
+  parameterInt     Int?
 
-  // NEW: configurable number of lives / tries for chips created from this template
-  maxTries        Int         @default(2)
+  // Configurable number of lives / tries for chips created from this template
+  maxTries         Int         @default(2)
+
+  // Shop config: if isInShop && shopPrice not null, chip can be bought for coins
+  isInShop         Boolean     @default(false)
+  shopPrice        Int?
 
   // Soft-active flag for admin
-  isActive      Boolean      @default(true)
+  isActive         Boolean     @default(true)
 
-  createdAt     DateTime     @default(now())
+  createdAt        DateTime    @default(now())
 
-  userChips     UserChip[]
+  userChips        UserChip[]
 }
 
 // A specific chip owned by a user (inventory item)
@@ -514,9 +521,7 @@ model UserChip {
   templateId    String
   isConsumed    Boolean      @default(false)
 
-  // NEW: chips now have a limited number of "lives" (tries).
-  // We start from template.maxTries (default 2) and decrement on failures.
-  // On success or when remainingTries reaches 0, the chip is consumed.
+  // Chips now have a limited number of "lives" (tries).
   remainingTries Int         @default(2)
 
   createdAt     DateTime     @default(now())
@@ -526,8 +531,6 @@ model UserChip {
 }
 
 // A chip "armed" on a specific monster for a specific gameweek.
-// Once the gameweek is scored, this assignment is resolved and
-// the chip either succeeds or fails (and may have remaining tries).
 model MonsterChipAssignment {
   id            String        @id @default(cuid())
   userMonster   UserMonster   @relation(fields: [userMonsterId], references: [id])
@@ -541,7 +544,7 @@ model MonsterChipAssignment {
 
   createdAt     DateTime      @default(now())
 
-  // NEW: resolution info (for history + UI)
+  // Resolution info (for history + UI)
   resolvedAt    DateTime?
   wasSuccessful Boolean?
 }
@@ -564,7 +567,6 @@ model BattleMatch {
   currentTurnPlayerId String?
   winnerUserId        String?
 
-  // In the next step, we'll store the full battle snapshot here as JSON
   battleState Json?
 
   lastUpdatedAt DateTime @default(now())

@@ -30,6 +30,9 @@ export async function POST(req: NextRequest) {
       parameterInt,
       maxTries,
       isActive,
+      // 👇 shop fields
+      isInShop,
+      shopPrice,
     } = body || {};
 
     if (!code || !name || !description || !conditionType) {
@@ -50,6 +53,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validate maxTries
+    let safeMaxTries = 2;
+    if (typeof maxTries === "number" && !Number.isNaN(maxTries)) {
+      if (maxTries < 1) {
+        return NextResponse.json(
+          { error: "maxTries must be at least 1." },
+          { status: 400 }
+        );
+      }
+      safeMaxTries = Math.floor(maxTries);
+    }
+
+    // Validate shop price
+    let safeIsInShop = false;
+    let safeShopPrice: number | null = null;
+    if (typeof shopPrice === "number" && shopPrice > 0) {
+      safeShopPrice = Math.floor(shopPrice);
+      safeIsInShop = !!isInShop; // only list if admin ticked the box
+    } else {
+      // If price is invalid, force it out of the shop
+      safeIsInShop = false;
+      safeShopPrice = null;
+    }
+
     const created = await prisma.chipTemplate.create({
       data: {
         code,
@@ -62,10 +89,13 @@ export async function POST(req: NextRequest) {
         // optional flex field
         parameterInt:
           typeof parameterInt === "number" ? parameterInt : null,
-        // NEW: configurable maxTries for this chip template
-        maxTries:
-          typeof maxTries === "number" && maxTries > 0 ? maxTries : 2,
+        // configurable maxTries for this chip template
+        maxTries: safeMaxTries,
         isActive: typeof isActive === "boolean" ? isActive : true,
+
+        // shop fields
+        isInShop: safeIsInShop,
+        shopPrice: safeShopPrice,
       },
     });
 

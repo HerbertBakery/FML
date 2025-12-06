@@ -2,19 +2,20 @@
 //
 // Opens a pack for the current user.
 // - Starter packs ("starter"): free, max 2 per user.
-// - Paid packs (bronze/silver/gold): cost coins from user balance.
+// - Paid packs (bronze/silver/gold/mythical): cost coins from user balance.
 // - Uses monsters-2025-26.json (teams + players) and generates rarity + base stats on the fly.
 //
 // NEW IN THIS VERSION:
 // - Uses minutesFirst13 from your JSON to decide who can be multi-rarity.
 //   * minutesFirst13 < 300  => COMMON-only (true fringe / barely plays)
 //   * minutesFirst13 >= 300 => can roll COMMON / RARE / EPIC / LEGENDARY
-// - Pack-specific rarity odds for multi-rarity players (starter/bronze/silver/gold).
+// - Pack-specific rarity odds for multi-rarity players (starter/bronze/silver/gold/mythical).
 // - Tiny chance per card to roll from the 8 Mythical monsters pool,
 //   which always have rarity "MYTHICAL" and custom art/stats.
 //
 // Still also:
-// - Handles limited editions via pack definition knobs.
+// - Handles limited editions via pack definition knobs, with a hard cap
+//   of 10 GOLDEN limited editions per base monster (numbered 1/10).
 // - Stores artBasePath + setCode on UserMonster.
 // - Updates objectives via the Season 1 sync helper.
 
@@ -103,6 +104,13 @@ const PACK_RARITY_PROFILES: Record<PackId, RarityProfile> = {
     rare: 0.25,
     epic: 0.15,
     legendary: 0.05,
+  },
+  // 🔥 Mythical pack: very low commons, big legendary odds
+  mythical: {
+    common: 0.15,
+    rare: 0.30,
+    epic: 0.30,
+    legendary: 0.25,
   },
 };
 
@@ -196,12 +204,12 @@ function buildBaseArtPath(player: RawPlayer): string {
 
 function rollMythical(
   mythicalChancePerCard: number | undefined
-): RawPlayer & {
+): (RawPlayer & {
   rarity: string;
   baseAttack: number;
   baseMagic: number;
   baseDefense: number;
-} | null {
+}) | null {
   if (!mythicalChancePerCard || mythicalChancePerCard <= 0) {
     return null;
   }
@@ -372,21 +380,38 @@ export async function POST(req: NextRequest) {
       for (const p of chosen) {
         const isMythical = p.rarity === "MYTHICAL";
 
-        // Mythicals should NOT be limited editions on top
-        const isLimited =
-          !isMythical && maybeRollLimitedEdition(def.limitedEditionChance);
+        // Decide if this roll *wants* to be a limited edition
+        const rolledLimited =
+          !isMythical &&
+          maybeRollLimitedEdition(def.limitedEditionChance);
 
-        const setCode = isMythical ? "MYTHICAL" : "BASE";
-        const editionType = isMythical
-          ? "BASE"
-          : isLimited
-          ? "LIMITED"
-          : "BASE";
-        const editionLabel = isMythical
-          ? "Mythical"
-          : isLimited
-          ? "Limited Edition"
-          : null;
+        // Default edition values
+        let editionType: "BASE" | "THEMED" | "LIMITED" = "BASE";
+        let serialNumber: number | null = null;
+        let editionLabel: string | null = null;
+
+        // Set code defaults
+        let setCode = isMythical ? "MYTHICAL" : "BASE";
+
+        if (isMythical) {
+          // Mythicals are their own thing, not "Limited"
+          editionLabel = "Mythical";
+        } else if (rolledLimited) {
+          // Hard cap: at most 10 limited editions per templateCode
+          const existingLECount = await tx.userMonster.count({
+            where: {
+              templateCode: String(p.code),
+              editionType: "LIMITED",
+            },
+          });
+
+          if (existingLECount < 10) {
+            editionType = "LIMITED";
+            serialNumber = existingLECount + 1;
+            editionLabel = `${serialNumber} of 10`;
+          }
+          // If >= 10, we silently fall back to a normal BASE card
+        }
 
         const artBasePath =
           p.artBasePath && isMythical
@@ -409,6 +434,7 @@ export async function POST(req: NextRequest) {
             setCode,
             editionType,
             editionLabel: editionLabel ?? undefined,
+            serialNumber: serialNumber ?? undefined,
             artBasePath,
           },
         });
@@ -420,6 +446,10 @@ export async function POST(req: NextRequest) {
             action: "CREATED",
             description: `Found in ${def.name} pack (${def.id})${
               isMythical ? " [MYTHICAL]" : ""
+            }${
+              created.editionType === "LIMITED" && created.serialNumber
+                ? ` [Limited Edition #${created.serialNumber}/10]`
+                : ""
             }`,
           },
         });

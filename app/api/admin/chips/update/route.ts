@@ -39,6 +39,11 @@ export async function POST(req: NextRequest) {
       maxRarity,
       allowedPositions,
       isActive,
+      // NEW: extra fields
+      parameterInt,
+      maxTries,
+      isInShop,
+      shopPrice,
     } = body;
 
     if (!id) {
@@ -59,17 +64,57 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Small safety on maxTries + shop fields
+    let data: any = {
+      ...(name !== undefined && { name }),
+      ...(description !== undefined && { description }),
+      ...(conditionType !== undefined && { conditionType }),
+      ...(minRarity !== undefined && { minRarity }),
+      ...(maxRarity !== undefined && { maxRarity }),
+      ...(allowedPositions !== undefined && { allowedPositions }),
+      ...(isActive !== undefined && { isActive }),
+    };
+
+    if (parameterInt !== undefined) {
+      data.parameterInt =
+        typeof parameterInt === "number" && !Number.isNaN(parameterInt)
+          ? parameterInt
+          : null;
+    }
+
+    if (maxTries !== undefined) {
+      const n = Number(maxTries);
+      if (!Number.isNaN(n) && n >= 1) {
+        data.maxTries = Math.floor(n);
+      }
+    }
+
+    if (isInShop !== undefined || shopPrice !== undefined) {
+      // If either is sent, we recompute both
+      let safeIsInShop = existing.isInShop;
+      let safeShopPrice = existing.shopPrice;
+
+      if (typeof isInShop === "boolean") {
+        safeIsInShop = isInShop;
+      }
+
+      if (shopPrice !== undefined) {
+        const n = Number(shopPrice);
+        if (!Number.isNaN(n) && n > 0) {
+          safeShopPrice = Math.floor(n);
+        } else {
+          safeShopPrice = null;
+          safeIsInShop = false;
+        }
+      }
+
+      data.isInShop = safeIsInShop;
+      data.shopPrice = safeShopPrice;
+    }
+
     const updated = await prisma.chipTemplate.update({
       where: { id },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(description !== undefined && { description }),
-        ...(conditionType !== undefined && { conditionType }),
-        ...(minRarity !== undefined && { minRarity }),
-        ...(maxRarity !== undefined && { maxRarity }),
-        ...(allowedPositions !== undefined && { allowedPositions }),
-        ...(isActive !== undefined && { isActive }),
-      },
+      data,
     });
 
     return NextResponse.json({

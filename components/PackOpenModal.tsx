@@ -18,7 +18,8 @@ const LISTING_TTL_DAYS = 2;
 
 // -------------------- Types --------------------
 
-export type PackId = "starter" | "bronze" | "silver" | "gold";
+// NOTE: just extended your existing union to include "mythical"
+export type PackId = "starter" | "bronze" | "silver" | "gold" | "mythical";
 
 export type OpenedMonster = {
   id: string;
@@ -165,10 +166,29 @@ const THEMES: Record<PackId, Theme> = {
     subText: "text-black/80",
     label: "Gold Pack",
   },
+  // NEW: Mythical theme — added only, nothing removed
+  mythical: {
+    frame: "border-4 border-fuchsia-400",
+    bodyFrom: "from-fuchsia-200",
+    bodyVia: "via-fuchsia-500",
+    bodyTo: "to-indigo-800",
+    sheenFrom: "from-white/55",
+    shredTop: "bg-fuchsia-500",
+    shredBottom: "bg-indigo-700",
+    brandText: "text-black",
+    subText: "text-black/80",
+    label: "Mythical Pack",
+  },
 };
 
 // -------------------- Card Visual --------------------
-type RarityKey = "COMMON" | "RARE" | "EPIC" | "LEGENDARY" | "DEFAULT";
+type RarityKey =
+  | "COMMON"
+  | "RARE"
+  | "EPIC"
+  | "LEGENDARY"
+  | "MYTHICAL"
+  | "DEFAULT";
 
 const rarityStyle: Record<
   RarityKey,
@@ -194,6 +214,12 @@ const rarityStyle: Record<
     glow: "shadow-amber-400/40",
     label: "bg-amber-500 text-black",
   },
+  // NEW optional style for Mythical rarity
+  MYTHICAL: {
+    ring: "ring-fuchsia-400",
+    glow: "shadow-fuchsia-400/40",
+    label: "bg-fuchsia-500 text-black",
+  },
   DEFAULT: {
     ring: "ring-emerald-400",
     glow: "shadow-emerald-400/30",
@@ -208,9 +234,10 @@ function rarityKey(r: string | undefined | null): RarityKey {
     upper === "COMMON" ||
     upper === "RARE" ||
     upper === "EPIC" ||
-    upper === "LEGENDARY"
+    upper === "LEGENDARY" ||
+    upper === "MYTHICAL"
   ) {
-    return upper;
+    return upper as RarityKey;
   }
   return "DEFAULT";
 }

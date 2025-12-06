@@ -21,9 +21,9 @@ export type MonsterCardMonster = {
   hoverArtUrl?: string;
 
   setCode?: string;
-  editionType?: string;
-  serialNumber?: number;
-  editionLabel?: string;
+  editionType?: string;     // "BASE" | "THEMED" | "LIMITED"
+  serialNumber?: number;    // 1–10 for limiteds
+  editionLabel?: string;    // e.g. "1 of 10"
 };
 
 export type ActiveChipInfo = {
@@ -84,14 +84,19 @@ export default function MonsterCard({
   detailHref,
   activeChip,
 }: MonsterCardProps) {
+  const isLimited = monster.editionType === "LIMITED";
   const { border, background, badge } = getRarityClasses(monster.rarity);
 
   const hasArt = !!monster.artUrl;
-  const editionText =
-    monster.editionLabel ??
-    (typeof monster.serialNumber === "number"
-      ? `Serial #${monster.serialNumber}`
-      : undefined);
+
+  const editionText = isLimited
+    ? typeof monster.serialNumber === "number"
+      ? `Limited Edition #${monster.serialNumber} / 10`
+      : monster.editionLabel ?? "Limited Edition"
+    : monster.editionLabel ??
+      (typeof monster.serialNumber === "number"
+        ? `Serial #${monster.serialNumber}`
+        : undefined);
 
   // Preload hover art
   useEffect(() => {
@@ -103,7 +108,12 @@ export default function MonsterCard({
 
   return (
     <div
-      className={`group rounded-xl border ${border} ${background} p-3 text-xs flex flex-col justify-between gap-2 overflow-hidden`}
+      className={`group rounded-xl border ${border} ${background} p-3 text-xs flex flex-col justify-between gap-2 overflow-hidden
+        ${
+          isLimited
+            ? "border-yellow-400 shadow-[0_0_24px_rgba(250,204,21,0.45)] relative before:absolute before:inset-x-0 before:top-0 before:h-10 before:bg-gradient-to-b before:from-yellow-400/15 before:to-transparent"
+            : ""
+        }`}
     >
       <div>
         {/* ART AREA */}
@@ -113,6 +123,13 @@ export default function MonsterCard({
             <div className="absolute top-1 left-1 z-10 rounded-md bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300 shadow-sm">
               {monster.position}
             </div>
+
+            {/* Limited edition tag on art */}
+            {isLimited && (
+              <div className="absolute top-1 right-1 z-10 rounded-md bg-yellow-400/90 px-2 py-0.5 text-[9px] font-bold uppercase text-slate-950 shadow">
+                GOLDEN
+              </div>
+            )}
 
             {/* Base art */}
             <img
@@ -146,14 +163,16 @@ export default function MonsterCard({
               />
             </div>
           ) : (
-            <div className="mt-0.5">
+            <div className="mt-0.5 flex items-center gap-2">
               {rightBadge ? (
                 <span className="text-[10px]">{rightBadge}</span>
               ) : (
                 <span
-                  className={`text-[10px] uppercase font-semibold ${badge}`}
+                  className={`text-[10px] uppercase font-semibold ${
+                    isLimited ? "text-yellow-300" : badge
+                  }`}
                 >
-                  {monster.rarity}
+                  {isLimited ? "LIMITED • GOLDEN" : monster.rarity}
                 </span>
               )}
             </div>
@@ -172,8 +191,15 @@ export default function MonsterCard({
           </p>
         )}
 
+        {/* Edition line */}
         {editionText && (
-          <p className="text-[10px] text-amber-300 mt-1">{editionText}</p>
+          <p
+            className={`text-[10px] mt-1 ${
+              isLimited ? "text-yellow-300 font-semibold" : "text-amber-300"
+            }`}
+          >
+            {editionText}
+          </p>
         )}
       </div>
 

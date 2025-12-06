@@ -1,3 +1,4 @@
+// app/admin/chips/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -21,6 +22,10 @@ type ChipTemplate = {
   maxTries?: number | null;
   isActive: boolean;
   createdAt: string;
+
+  // NEW: shop fields
+  isInShop: boolean;
+  shopPrice: number | null;
 };
 
 type ListResponse = {
@@ -110,6 +115,10 @@ export default function AdminChipsPage() {
   const [maxTries, setMaxTries] = useState<number | null>(2);
   const [isActive, setIsActive] = useState(true);
 
+  // NEW: shop fields
+  const [isInShop, setIsInShop] = useState(false);
+  const [shopPrice, setShopPrice] = useState<number | null>(null);
+
   // Form errors / success
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
@@ -131,6 +140,8 @@ export default function AdminChipsPage() {
     setParameterInt(null);
     setMaxTries(2);
     setIsActive(true);
+    setIsInShop(false);
+    setShopPrice(null);
     setFormError(null);
     setFormSuccess(null);
   }
@@ -156,6 +167,14 @@ export default function AdminChipsPage() {
         : 2
     );
     setIsActive(chip.isActive);
+
+    setIsInShop(!!chip.isInShop);
+    setShopPrice(
+      chip.shopPrice != null && !Number.isNaN(chip.shopPrice)
+        ? chip.shopPrice
+        : null
+    );
+
     setFormError(null);
     setFormSuccess(null);
   }
@@ -270,6 +289,23 @@ export default function AdminChipsPage() {
       safeMaxTries = Math.floor(maxTries);
     }
 
+    // Validate shop price when listed
+    let safeIsInShop = isInShop;
+    let safeShopPrice: number | null = null;
+
+    if (isInShop) {
+      if (shopPrice == null || Number.isNaN(shopPrice) || shopPrice <= 0) {
+        setFormError(
+          "Enter a positive shop price, or untick 'List in shop'."
+        );
+        return;
+      }
+      safeShopPrice = Math.floor(shopPrice);
+    } else {
+      safeIsInShop = false;
+      safeShopPrice = null;
+    }
+
     setSaving(true);
 
     const body = {
@@ -286,6 +322,9 @@ export default function AdminChipsPage() {
         : null,
       maxTries: safeMaxTries,
       isActive,
+      // NEW: shop fields
+      isInShop: safeIsInShop,
+      shopPrice: safeShopPrice,
     };
 
     try {
@@ -515,6 +554,11 @@ export default function AdminChipsPage() {
                     <span className="text-[10px] text-slate-400">
                       {c.maxTries ?? 2} tries
                     </span>
+                    {c.isInShop && c.shopPrice != null && (
+                      <span className="text-[10px] text-amber-300">
+                        In shop • {c.shopPrice} coins
+                      </span>
+                    )}
                   </div>
                 </div>
               </button>
@@ -716,6 +760,44 @@ export default function AdminChipsPage() {
             <label htmlFor="isActive" className="text-[11px] text-slate-300">
               Active (visible + usable)
             </label>
+          </div>
+
+          {/* Shop toggle */}
+          <div className="flex items-center gap-2 sm:col-span-2 mt-1">
+            <input
+              type="checkbox"
+              id="isInShop"
+              checked={isInShop}
+              onChange={(e) => setIsInShop(e.target.checked)}
+              className="h-3 w-3"
+            />
+            <label htmlFor="isInShop" className="text-[11px] text-slate-300">
+              List in shop (buyable for coins)
+            </label>
+          </div>
+
+          {/* Shop price */}
+          <div>
+            <label className="text-[11px] text-slate-300">Shop Price</label>
+            <input
+              type="number"
+              min={1}
+              value={shopPrice ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") {
+                  setShopPrice(null);
+                } else {
+                  const n = parseInt(v, 10);
+                  setShopPrice(Number.isNaN(n) ? null : n);
+                }
+              }}
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 text-xs px-3 py-1.5"
+              placeholder="e.g. 500"
+            />
+            <p className="mt-1 text-[10px] text-slate-400">
+              Price in coins. Only used if &quot;List in shop&quot; is checked.
+            </p>
           </div>
 
           {/* Buttons */}
