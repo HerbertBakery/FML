@@ -38,97 +38,111 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-slate-950 text-slate-50">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <header className="mb-8 space-y-4">
-            {/* TOP ROW: LOGO + TITLE + AUTH */}
-            <div className="flex items-center justify-between gap-6">
-              <Link href="/" className="flex items-center gap-4">
-                <img
-                  src="/fml-logo.png"
-                  alt="Fantasy Monster League Logo"
-                  className="h-20 w-20 object-contain rounded-2xl drop-shadow-xl"
-                />
+        {/* 📱 Portrait lock screen – shown only in portrait via CSS */}
+        <div className="rotate-screen">
+          <div className="rotate-screen-inner">
+            <div className="rotate-icon">📲</div>
+            <h2 className="rotate-title">Rotate your device</h2>
+            <p className="rotate-text">
+              Fantasy Monster League is best played in landscape mode. Please
+              turn your phone sideways to continue.
+            </p>
+          </div>
+        </div>
 
-                <span className="text-3xl font-extrabold tracking-tight leading-tight whitespace-nowrap">
-                  Fantasy{" "}
-                  <span className="text-emerald-400">Monster</span>{" "}
-                  League
-                </span>
-              </Link>
+        {/* 🌐 Main app shell – hidden in portrait via CSS */}
+        <div className="app-root">
+          <div className="max-w-4xl mx-auto px-4 py-6">
+            <header className="mb-8 space-y-4">
+              {/* TOP ROW: LOGO + TITLE + AUTH */}
+              <div className="flex items-center justify-between gap-6">
+                <Link href="/" className="flex items-center gap-4">
+                  <img
+                    src="/fml-logo.png"
+                    alt="Fantasy Monster League Logo"
+                    className="h-20 w-20 object-contain rounded-2xl drop-shadow-xl"
+                  />
 
-              <div className="shrink-0">
-                <HeaderAuth />
+                  <span className="text-3xl font-extrabold tracking-tight leading-tight whitespace-nowrap">
+                    Fantasy{" "}
+                    <span className="text-emerald-400">Monster</span> League
+                  </span>
+                </Link>
+
+                <div className="shrink-0">
+                  <HeaderAuth />
+                </div>
               </div>
-            </div>
 
-            {/* NAV ROW: PILLS */}
-            <nav className="flex flex-wrap items-center gap-2 text-xs font-medium">
-              <Link
-                href="/"
-                className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
-              >
-                Home
-              </Link>
+              {/* NAV ROW: PILLS */}
+              <nav className="flex flex-wrap items-center gap-2 text-xs font-medium">
+                <Link
+                  href="/"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
+                >
+                  Home
+                </Link>
 
-              <Link
-                href="/squad"
-                className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
-              >
-                My Squads
-              </Link>
+                <Link
+                  href="/squad"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
+                >
+                  My Squads
+                </Link>
 
-              <Link
-                href="/leaderboards"
-                className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
-              >
-                Leagues
-              </Link>
+                <Link
+                  href="/leaderboards"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
+                >
+                  Leagues
+                </Link>
 
-              <Link
-                href="/marketplace"
-                className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
-              >
-                Marketplace
-              </Link>
+                <Link
+                  href="/marketplace"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
+                >
+                  Marketplace
+                </Link>
 
-              <Link
-                href="/packs"
-                className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
-              >
-                Shop
-              </Link>
+                <Link
+                  href="/packs"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
+                >
+                  Shop
+                </Link>
 
-              <Link
-                href="/me/objectives"
-                className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
-              >
-                Objectives
-              </Link>
+                <Link
+                  href="/me/objectives"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
+                >
+                  Objectives
+                </Link>
 
-              <Link
-                href="/challenges"
-                className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
-              >
-                SBCs
-              </Link>
+                <Link
+                  href="/challenges"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
+                >
+                  SBCs
+                </Link>
 
-              <Link
-                href="/chips"
-                className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
-              >
-                Evos
-              </Link>
+                <Link
+                  href="/chips"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
+                >
+                  Evos
+                </Link>
 
-              <Link
-                href="/battle"
-                className="inline-flex items-center justify-center rounded-full border border-emerald-500 bg-emerald-500/15 px-3 py-1.5 text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:border-emerald-300 hover:text-emerald-100 hover:bg-emerald-500/25 transition-colors"
-              >
-                Battle
-              </Link>
-            </nav>
-          </header>
+                <Link
+                  href="/battle"
+                  className="inline-flex items-center justify-center rounded-full border border-emerald-500 bg-emerald-500/15 px-3 py-1.5 text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:border-emerald-300 hover:text-emerald-100 hover:bg-emerald-500/25 transition-colors"
+                >
+                  Battle
+                </Link>
+              </nav>
+            </header>
 
-          {children}
+            {children}
+          </div>
         </div>
       </body>
     </html>

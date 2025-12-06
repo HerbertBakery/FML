@@ -8,6 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Fantasy football with monsterized Premier League players.",
     start_url: "/",
     display: "standalone",
+    // 🔒 Prefer landscape when installed to home screen
+    orientation: "landscape",
     background_color: "#020617",
     theme_color: "#22c55e",
     icons: [
@@ -25,8 +27,8 @@ export default function manifest(): MetadataRoute.Manifest {
         src: "/icons/apple-touch-icon.png",
         sizes: "180x180",
         type: "image/png",
-        purpose: "apple-touch-icon"
-      }
+        purpose: "apple-touch-icon",
+      },
     ],
   };
 }

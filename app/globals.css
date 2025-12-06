@@ -1,8 +1,76 @@
+/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
   @apply bg-slate-950 text-slate-50;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    sans-serif;
+}
+
+/* ===========================
+   Landscape-only behaviour
+   =========================== */
+
+/* Default styling for the rotate overlay */
+.rotate-screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #020617; /* slate-950 */
+  color: #e5e7eb; /* slate-200 */
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 2rem;
+}
+
+.rotate-screen-inner {
+  max-width: 22rem;
+  margin: 0 auto;
+}
+
+.rotate-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.rotate-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.rotate-text {
+  font-size: 0.95rem;
+  opacity: 0.8;
+}
+
+/* Container for the actual app content */
+.app-root {
+  /* Display behaviour controlled by orientation media queries below */
+}
+
+/* Portrait mode: hide the app, show rotate message */
+@media (orientation: portrait) {
+  .app-root {
+    display: none;
+  }
+
+  .rotate-screen {
+    display: flex;
+  }
+}
+
+/* Landscape mode: show the app, hide rotate message */
+@media (orientation: landscape) {
+  .app-root {
+    display: block;
+  }
+
+  .rotate-screen {
+    display: none;
+  }
 }
