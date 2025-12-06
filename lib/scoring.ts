@@ -157,55 +157,82 @@ function getEvolutionMultiplier(
  * conditionType comes from ChipTemplate.conditionType, e.g.:
  * "GOAL_SURGE", "PLAYMAKER", "WALL", "HEROIC_HAUL", "STEADY_FORM"
  *
- * NOTE: We only have access to *per-match* FPL stats, not per-half or
- * historical streaks. So anything like "FIRST_HALF_GOAL" or
- * "TWO_CLEAN_SHEETS_IN_A_ROW" would need extra data/state and is not
- * implemented here.
+ * This version is more forgiving: it treats several variants / synonyms
+ * as the same logical condition, so small differences in admin config
+ * (like "GOAL" vs "GOAL_SURGE") still behave as expected.
  */
 function checkChipSuccess(
   conditionTypeRaw: string,
   perf: PlayerPerformance,
-  basePoints: number
+  basePoints: number,
+  parameterInt?: number | null
 ): boolean {
   const t = (conditionTypeRaw || "").toUpperCase().trim();
 
-  switch (t) {
-    case "GOAL_SURGE":
-      // Needs at least 1 goal
-      return perf.goals >= 1;
+  // Normalised helpers
+  const goals = perf.goals ?? 0;
+  const assists = perf.assists ?? 0;
+  const returns = goals + assists;
+  const minutes = perf.minutes ?? 0;
+  const cleanSheets = perf.cleanSheets ?? 0;
 
-    case "BRACE":
-      // Needs at least 2 goals
-      return perf.goals >= 2;
+  // If parameterInt is set, use it as the threshold where sensible.
+  const goalThreshold = parameterInt && parameterInt > 0 ? parameterInt : 1;
+  const returnsThreshold = parameterInt && parameterInt > 0 ? parameterInt : 2;
 
-    case "HAT_TRICK":
-      // Needs 3+ goals
-      return perf.goals >= 3;
+  // Convenience predicates
+  const nameIncludes = (kw: string) => t.includes(kw);
 
-    case "GOAL_OR_ASSIST":
-      // Any attacking return
-      return perf.goals + perf.assists >= 1;
-
-    case "PLAYMAKER":
-      // Needs 2+ attacking returns (goals + assists)
-      return perf.goals + perf.assists >= 2;
-
-    case "WALL":
-      // Clean sheet + 60+ minutes
-      return perf.cleanSheets > 0 && perf.minutes >= 60;
-
-    case "HEROIC_HAUL":
-      // Big FPL haul
-      return basePoints >= 12;
-
-    case "STEADY_FORM":
-      // Solid, dependable score
-      return basePoints >= 5;
-
-    default:
-      // Unknown condition: treat as never-success (safe default)
-      return false;
+  // --- GOAL-BASED CHIPS ---
+  if (
+    t === "GOAL_SURGE" ||
+    t === "GOAL" ||
+    t === "SCORE_GOAL" ||
+    t === "GOAL_CHIP" ||
+    nameIncludes("GOAL")
+  ) {
+    return goals >= goalThreshold;
   }
+
+  if (t === "BRACE" || nameIncludes("BRACE")) {
+    return goals >= 2;
+  }
+
+  if (t === "HAT_TRICK" || nameIncludes("HATRICK") || nameIncludes("HAT-TRICK")) {
+    return goals >= 3;
+  }
+
+  // --- GOAL OR ASSIST ---
+  if (
+    t === "GOAL_OR_ASSIST" ||
+    nameIncludes("G+A") ||
+    nameIncludes("GOAL_OR_ASSIST")
+  ) {
+    return returns >= 1;
+  }
+
+  // --- PLAYMAKER / DOUBLE RETURN ---
+  if (t === "PLAYMAKER" || nameIncludes("PLAYMAKER")) {
+    return returns >= returnsThreshold;
+  }
+
+  // --- WALL / CLEAN SHEET ---
+  if (t === "WALL" || nameIncludes("WALL") || nameIncludes("CLEAN_SHEET")) {
+    return cleanSheets > 0 && minutes >= 60;
+  }
+
+  // --- BIG HAUL ---
+  if (t === "HEROIC_HAUL" || nameIncludes("HAUL")) {
+    return basePoints >= (parameterInt && parameterInt > 0 ? parameterInt : 12);
+  }
+
+  // --- STEADY FORM / SOLID SCORE ---
+  if (t === "STEADY_FORM" || nameIncludes("STEADY") || nameIncludes("FORM")) {
+    return basePoints >= (parameterInt && parameterInt > 0 ? parameterInt : 5);
+  }
+
+  // Unknown condition: safe default is "never auto-succeed"
+  return false;
 }
 
 // ---------- Fetch helpers ----------
@@ -453,15 +480,6 @@ export async function applyGameweekPerformances(
         const chipTemplate = chipAssignment.userChip.template;
         const chip = chipAssignment.userChip;
 
-        // If the player didn't play / has no perf, treat as a failed attempt
-        const chipSuccess = perf
-          ? checkChipSuccess(
-              chipTemplate.conditionType,
-              perf,
-              basePoints
-            )
-          : false;
-
         const maxTriesFromTemplate =
           typeof chipTemplate.maxTries === "number" &&
           chipTemplate.maxTries > 0
@@ -474,16 +492,35 @@ export async function applyGameweekPerformances(
             ? chip.remainingTries
             : maxTriesFromTemplate;
 
+        // If the player didn't play / has no perf, treat as a failed attempt
+        const chipSuccess =
+          !!perf &&
+          checkChipSuccess(
+            chipTemplate.conditionType,
+            perf,
+            basePoints,
+            chipTemplate.parameterInt
+          );
+
         let nextTries = currentTries;
 
-        if (chipSuccess && rarity !== "MYTHICAL") {
-          const maxEvo = getMaxEvoForRarity(rarity);
-          if (newEvoLevel < maxEvo) {
-            const before = newEvoLevel;
-            newEvoLevel = newEvoLevel + 1;
-            evoChanged = true;
-            const chipReason = `Evolved via chip "${chipTemplate.code}" in GW ${gameweekNumber} (Evo ${before} → ${newEvoLevel}).`;
-            evoReason = evoReason ? `${evoReason} ${chipReason}` : chipReason;
+        if (chipSuccess) {
+          // SUCCESS CASE:
+          // - Always mark the assignment as successful.
+          // - Always consume the chip (no more lives).
+          // - If not MYTHICAL and under cap, also evolve the monster.
+
+          if (rarity !== "MYTHICAL") {
+            const maxEvo = getMaxEvoForRarity(rarity);
+            if (newEvoLevel < maxEvo) {
+              const before = newEvoLevel;
+              newEvoLevel = newEvoLevel + 1;
+              evoChanged = true;
+              const chipReason = `Evolved via chip "${chipTemplate.code}" in GW ${gameweekNumber} (Evo ${before} → ${newEvoLevel}).`;
+              evoReason = evoReason
+                ? `${evoReason} ${chipReason}`
+                : chipReason;
+            }
           }
 
           // Success consumes the chip outright
@@ -506,7 +543,11 @@ export async function applyGameweekPerformances(
             },
           });
         } else {
-          // Failure (including "didn't play"): lose one life
+          // FAILURE CASE (including "didn't play"):
+          // - Lose one life
+          // - If lives hit 0, chip is consumed
+          // - Mark assignment as failed
+
           nextTries = Math.max(0, currentTries - 1);
           const shouldConsume = nextTries <= 0;
 
