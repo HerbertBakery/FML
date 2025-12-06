@@ -113,10 +113,10 @@ export default function HomePage() {
   const [starterMessage, setStarterMessage] = useState<string | null>(null);
   const [showStarterModal, setShowStarterModal] = useState<boolean>(false);
 
-  // NEW: track which templateCodes the user already owns in their collection
+  // track which templateCodes the user already owns in their collection
   const [ownedTemplateCodes, setOwnedTemplateCodes] = useState<string[]>([]);
 
-  // NEW: expired listings / unclaimed items
+  // expired listings / unclaimed items
   const [unclaimedItems, setUnclaimedItems] = useState<UnclaimedItem[]>([]);
   const [unclaimedError, setUnclaimedError] = useState<string | null>(null);
   const [unclaimedMessage, setUnclaimedMessage] = useState<string | null>(null);
@@ -186,7 +186,7 @@ export default function HomePage() {
         setSummary(data);
       }
 
-      // Load streak status (only if logged in)
+      // Streak status
       const streakRes = await fetch("/api/streak", {
         credentials: "include",
       });
@@ -210,7 +210,7 @@ export default function HomePage() {
         setStreak(null);
       }
 
-      // Load starter pack meta (how many free starter packs opened) + collection
+      // Starter pack meta + collection
       const colRes = await fetch("/api/me/collection", {
         credentials: "include",
       });
@@ -225,7 +225,7 @@ export default function HomePage() {
         setOwnedTemplateCodes([]);
       }
 
-      // NEW: load any listings that expired and didn't sell
+      // Unclaimed / expired listings
       const unclaimedRes = await fetch("/api/me/unclaimed-items", {
         credentials: "include",
       });
@@ -334,7 +334,6 @@ export default function HomePage() {
     setShowStarterModal(true);
   }
 
-  // NEW: resolve a single unclaimed / expired listing
   async function handleResolveUnclaimed(action: "RETURN" | "QUICK_SELL" | "RELIST") {
     if (!selectedUnclaimedId) return;
     setResolvingUnclaimed(true);
@@ -403,75 +402,245 @@ export default function HomePage() {
     }
   }
 
-  // Logged-out view
+  // ---------- LOGGED-OUT VIEW ----------
   if (!me) {
     return (
-      <main className="space-y-6">
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
-          <h1 className="text-2xl font-bold mb-2">Fantasy Monster League</h1>
-          <p className="text-sm text-slate-300 mb-4">
-            Build a squad of monsterized Premier League stars, open packs, trade
-            on the marketplace, and compete in fantasy leaderboards every
-            gameweek.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/register"
-              className="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300"
-            >
-              Get Started – Free Packs
-            </Link>
-            <Link
-              href="/login"
-              className="rounded-full border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-100 hover:border-emerald-300"
-            >
-              Log In
-            </Link>
+      <main className="space-y-8">
+        {/* HERO */}
+        <section className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-900/40 p-6 sm:p-8">
+          <div className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-sky-500/10 blur-3xl" />
+
+          <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="max-w-xl space-y-4">
+              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
+                Build your{" "}
+                <span className="text-emerald-400">7-a-side monster squad</span>{" "}
+                and dominate fantasy football.
+              </h1>
+              <p className="text-sm sm:text-base text-slate-300">
+                Fantasy Monster League blends{" "}
+                <span className="font-semibold">FPL scoring</span> with{" "}
+                <span className="font-semibold">card collecting</span>,
+                evolutions, and live monster battles. Open packs, evolve your
+                favourites, and climb the leaderboards.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Link
+                  href="/register"
+                  className="inline-flex items-center justify-center rounded-full bg-emerald-400 px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-emerald-500/40 hover:bg-emerald-300"
+                >
+                  Get started – 2 free starter packs
+                </Link>
+                <Link
+                  href="/login"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-600 px-5 py-2.5 text-sm font-semibold text-slate-100 hover:border-emerald-300"
+                >
+                  Log in
+                </Link>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-slate-300">
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/80 px-3 py-1 border border-slate-700/70">
+                  🧪 Evolve monsters with Evo chips
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/80 px-3 py-1 border border-slate-700/70">
+                  📈 Score from real Premier League matches
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/80 px-3 py-1 border border-slate-700/70">
+                  ⚔️ Battle live in PvP arena
+                </span>
+              </div>
+            </div>
+
+            {/* FEATURED MONSTER CARD */}
+            <div className="relative mx-auto mt-4 w-full max-w-xs sm:mt-0">
+              <div className="aspect-[3/4] w-full rounded-3xl border border-slate-700 bg-slate-950/80 p-3 shadow-xl shadow-emerald-500/20">
+                <div className="flex h-full flex-col overflow-hidden rounded-2xl bg-slate-950">
+                  <div className="relative h-2/3">
+                    <img
+                      src="/cards/mythical/cold-palm.png"
+                      alt="Cold Palm – featured mythical monster"
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-transparent" />
+                    <div className="absolute left-3 bottom-3 rounded-full bg-emerald-500/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+                      Featured monster
+                    </div>
+                  </div>
+
+                  <div className="flex flex-1 flex-col justify-between p-3 text-xs">
+                    <div className="space-y-1">
+                      <p className="text-[11px] text-slate-400">
+                        Mythical • MID
+                      </p>
+                      <p className="text-sm font-semibold text-slate-50">
+                        Cold Palm
+                      </p>
+                      <p className="text-[11px] text-slate-300">
+                        A freezing playmaker that channels real-world goals and
+                        assists into explosive fantasy points for your
+                        7-a-side squad.
+                      </p>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+                      <div className="rounded-xl bg-slate-900/80 p-2 text-center">
+                        <p className="text-slate-400">ATK</p>
+                        <p className="font-mono text-emerald-300">91</p>
+                      </div>
+                      <div className="rounded-xl bg-slate-900/80 p-2 text-center">
+                        <p className="text-slate-400">MAG</p>
+                        <p className="font-mono text-sky-300">88</p>
+                      </div>
+                      <div className="rounded-xl bg-slate-900/80 p-2 text-center">
+                        <p className="text-slate-400">DEF</p>
+                        <p className="font-mono text-amber-300">74</p>
+                      </div>
+                    </div>
+
+                    <p className="mt-3 text-[10px] text-slate-500">
+                      Unlock monsters like Cold Palm from packs and SBCs, then
+                      evolve them with Evo chips to dominate both fantasy
+                      scoring and Battle Mode.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-300 space-y-3">
-          <h2 className="text-sm font-semibold text-slate-100">
-            How it works
-          </h2>
-          <ol className="list-decimal list-inside space-y-1">
-            <li>
-              Sign up and open your <b>free starter packs</b>.
-            </li>
-            <li>
-              Build your <b>6-a-side monster squad</b> (1 GK, at least 1 in each
-              position).
-            </li>
-            <li>
-              Each gameweek, your monsters score points based on real Premier
-              League performances.
-            </li>
-            <li>
-              Evolve monsters as their real-life player hits milestones, and
-              climb the <b>global leaderboards</b>.
-            </li>
-            <li>
-              Buy and sell monsters on the <b>marketplace</b> to build your
-              dream club.
-            </li>
-          </ol>
+        {/* HOW IT WORKS – GAME LOOP */}
+        <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 sm:p-7 space-y-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-lg sm:text-xl font-semibold text-slate-50">
+                How Fantasy Monster League works
+              </h2>
+              <p className="mt-1 text-xs sm:text-sm text-slate-300">
+                The core loop is simple:{" "}
+                <span className="font-semibold">
+                  find monsters → use them in your 7-a-side squad → evolve them
+                  → score more points → battle live.
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* 1. FIND */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-bold text-emerald-300">
+                  1
+                </span>
+                <p className="text-sm font-semibold text-slate-50">
+                  Find monsters
+                </p>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Open free Starter Packs, then Bronze, Silver and Gold packs.
+                Use the marketplace to hunt for specific monsters you love.
+              </p>
+              <ul className="mt-1 space-y-1 text-[11px] text-slate-400">
+                <li>• Packs give random monster cards</li>
+                <li>• Rarer monsters have better base stats</li>
+                <li>• Trade with other managers any time</li>
+              </ul>
+            </div>
+
+            {/* 2. USE */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-sky-500/20 text-xs font-bold text-sky-300">
+                  2
+                </span>
+                <p className="text-sm font-semibold text-slate-50">
+                  Use them in your squad
+                </p>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Field a{" "}
+                <span className="font-semibold">7-a-side team</span> (1 GK +
+                6 outfield monsters) and lock in your squad before each
+                real-life gameweek.
+              </p>
+              <ul className="mt-1 space-y-1 text-[11px] text-slate-400">
+                <li>• Your squad scores from real Premier League stats</li>
+                <li>• Different positions matter tactically</li>
+                <li>• Climb season & weekly leaderboards</li>
+              </ul>
+            </div>
+
+            {/* 3. EVOLVE */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500/20 text-xs font-bold text-amber-300">
+                  3
+                </span>
+                <p className="text-sm font-semibold text-slate-50">
+                  Evolve & power up
+                </p>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Use Evo chips and special SBC challenges to evolve your
+                favourite monsters and unlock bigger point multipliers.
+              </p>
+              <ul className="mt-1 space-y-1 text-[11px] text-slate-400">
+                <li>• Complete SBCs to earn new Evo chips</li>
+                <li>• Evolved monsters get boosted stats</li>
+                <li>• High-level evolutions dominate scoring</li>
+              </ul>
+            </div>
+
+            {/* 4. SCORE & BATTLE */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-rose-500/20 text-xs font-bold text-rose-300">
+                  4
+                </span>
+                <p className="text-sm font-semibold text-slate-50">
+                  Score big & battle live
+                </p>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                As you score more fantasy points, you unlock better squads for
+                <span className="font-semibold"> live Battle Mode</span> – a
+                head-to-head monster card game using your collection.
+              </p>
+              <ul className="mt-1 space-y-1 text-[11px] text-slate-400">
+                <li>• Weekly & season-long leaderboards</li>
+                <li>• Real players power your PvP monsters</li>
+                <li>• Outplay opponents with your evolved squad</li>
+              </ul>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-slate-400">
+            Get started in under a minute: create an account, open your free
+            packs, set a 7-a-side squad for the next gameweek, and you’re in.
+          </p>
         </section>
       </main>
     );
   }
 
-  // Logged-in dashboard
+  // ---------- LOGGED-IN DASHBOARD ----------
   const starterAvailable =
     starterPacksOpened !== null && starterPacksOpened < 2;
 
   return (
     <>
-      <main className="space-y-6">
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
-          <div className="flex items-start justify-between gap-4">
+      <main className="space-y-8">
+        <section className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-900/60 p-6 sm:p-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h1 className="text-2xl font-bold mb-1">Manager Dashboard</h1>
-              <p className="text-xs text-slate-400 mb-1">
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-1">
+                Manager Dashboard
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-300 mb-1">
                 Welcome back,{" "}
                 <span className="font-mono">
                   {me.username || me.email}
@@ -484,29 +653,30 @@ export default function HomePage() {
                   {new Date(summary.user.createdAt).toLocaleDateString()}
                 </p>
               )}
+              {error && (
+                <p className="mt-2 text-[11px] text-red-400">
+                  {error}
+                </p>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={load}
-              className="rounded-full border border-slate-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
-            >
-              Refresh
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              <button
+                type="button"
+                onClick={load}
+                className="rounded-full border border-slate-600 px-4 py-1.5 text-[11px] font-semibold text-slate-100 hover:border-emerald-300"
+              >
+                {loading ? "Refreshing..." : "Refresh data"}
+              </button>
+            </div>
           </div>
 
-          {error && (
-            <p className="mt-2 text-xs text-red-400">
-              {error}
-            </p>
-          )}
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs">
+          <div className="mt-5 grid gap-4 sm:grid-cols-3">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-xs flex flex-col gap-2">
               <p className="text-[11px] text-slate-400">Coins</p>
-              <p className="mt-1 text-lg font-semibold text-emerald-300 font-mono">
+              <p className="mt-1 text-xl font-semibold text-emerald-300 font-mono">
                 {summary?.user?.coins ?? me.coins}
               </p>
-              <p className="mt-2 text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-400">
                 Spend coins on new packs in the{" "}
                 <Link
                   href="/packs"
@@ -518,12 +688,12 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-xs flex flex-col gap-2">
               <p className="text-[11px] text-slate-400">Monsters Owned</p>
-              <p className="mt-1 text-lg font-semibold text-sky-300 font-mono">
+              <p className="mt-1 text-xl font-semibold text-sky-300 font-mono">
                 {summary?.monsters?.totalOwned ?? 0}
               </p>
-              <p className="mt-2 text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-400">
                 Manage your squad and collection on the{" "}
                 <Link
                   href="/squad"
@@ -535,9 +705,9 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-xs flex flex-col gap-2">
               <p className="text-[11px] text-slate-400">Season Progress</p>
-              <p className="mt-1 text-lg font-semibold text-amber-300 font-mono">
+              <p className="mt-1 text-xl font-semibold text-amber-300 font-mono">
                 {summary?.season?.totalPoints ?? 0} pts
               </p>
               {summary?.latestGameweek ? (
@@ -553,11 +723,11 @@ export default function HomePage() {
                 </p>
               ) : (
                 <p className="mt-1 text-[11px] text-slate-300">
-                  No gameweek scores yet. Set your squad before the next
-                  deadline.
+                  No gameweek scores yet. Set your 7-a-side squad before the
+                  next deadline.
                 </p>
               )}
-              <p className="mt-2 text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-400">
                 See rankings on the{" "}
                 <Link
                   href="/leaderboards"
@@ -572,7 +742,7 @@ export default function HomePage() {
         </section>
 
         {/* Daily streak card */}
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs">
+        <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-4 sm:p-5 text-xs">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold text-slate-100">
@@ -634,8 +804,8 @@ export default function HomePage() {
           </p>
         </section>
 
-        {/* NEW: expired listings / "items that didn't sell" – always visible */}
-        <section className="rounded-2xl border border-amber-500/40 bg-amber-950/40 p-4 text-xs">
+        {/* Unclaimed / expired listings */}
+        <section className="rounded-3xl border border-amber-500/40 bg-amber-950/40 p-4 sm:p-5 text-xs">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold text-amber-200">
@@ -690,9 +860,9 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Starter packs card – ONLY while there are free packs remaining */}
+        {/* Starter packs card */}
         {starterAvailable && (
-          <section className="rounded-2xl border border-emerald-500/40 bg-emerald-950/50 p-4 text-xs">
+          <section className="rounded-3xl border border-emerald-500/40 bg-emerald-950/60 p-4 sm:p-5 text-xs">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <p className="text-[11px] font-semibold text-emerald-200">
@@ -733,7 +903,7 @@ export default function HomePage() {
                   }`}
                 >
                   {starterAvailable
-                    ? "Open Free Starter Pack"
+                    ? "Open free Starter Pack"
                     : "All free packs claimed"}
                 </button>
               </div>
@@ -746,70 +916,71 @@ export default function HomePage() {
           </section>
         )}
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-          <h2 className="text-sm font-semibold text-slate-100 mb-3">
-            Jump back into the action
+        {/* QUICK ACTIONS / LOOP REMINDER */}
+        <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-4 sm:p-5">
+          <h2 className="text-sm sm:text-base font-semibold text-slate-100 mb-3">
+            Jump back into the loop
           </h2>
           <div className="grid gap-3 sm:grid-cols-4">
             <Link
               href="/squad"
-              className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-400 transition-colors"
+              className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3 text-xs hover:border-emerald-400 transition-colors flex flex-col gap-1"
             >
-              <p className="text-[11px] text-slate-400">Squad</p>
-              <p className="mt-1 text-sm font-semibold text-slate-100">
-                Set Your 6-a-side Team
+              <p className="text-[11px] text-slate-400">Use</p>
+              <p className="text-sm font-semibold text-slate-100">
+                Set your 7-a-side team
               </p>
-              <p className="mt-1 text-[11px] text-slate-400">
-                Pick 1 GK and a balanced mix of DEF, MID, FWD before each
-                gameweek.
+              <p className="text-[11px] text-slate-400">
+                Pick 1 GK and 6 outfield monsters before each gameweek.
               </p>
             </Link>
 
             <Link
               href="/packs"
-              className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-400 transition-colors"
+              className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3 text-xs hover:border-emerald-400 transition-colors flex flex-col gap-1"
             >
-              <p className="text-[11px] text-slate-400">Packs</p>
-              <p className="mt-1 text-sm font-semibold text-slate-100">
-                Open Monster Packs
+              <p className="text-[11px] text-slate-400">Find</p>
+              <p className="text-sm font-semibold text-slate-100">
+                Open monster packs
               </p>
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-400">
                 Use coins to buy Bronze, Silver, and Gold packs to grow your
                 club.
               </p>
             </Link>
 
             <Link
-              href="/marketplace"
-              className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-400 transition-colors"
+              href="/chips"
+              className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3 text-xs hover:border-emerald-400 transition-colors flex flex-col gap-1"
             >
-              <p className="text-[11px] text-slate-400">Marketplace</p>
-              <p className="mt-1 text-sm font-semibold text-slate-100">
-                Trade Monsters
+              <p className="text-[11px] text-slate-400">Evolve</p>
+              <p className="text-sm font-semibold text-slate-100">
+                Power up monsters
               </p>
-              <p className="mt-1 text-[11px] text-slate-400">
-                Buy low, sell high, and target key monsters for your tactics.
+              <p className="text-[11px] text-slate-400">
+                Use Evo chips and SBCs to evolve key monsters and boost their
+                scoring multipliers.
               </p>
             </Link>
 
             <Link
-              href="/leagues"
-              className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-400 transition-colors"
+              href="/battle"
+              className="rounded-2xl border border-emerald-500 bg-slate-950/80 p-3 text-xs hover:border-emerald-400 transition-colors flex flex-col gap-1 shadow-[0_0_25px_rgba(16,185,129,0.35)]"
             >
-              <p className="text-[11px] text-slate-400">Leagues</p>
-              <p className="mt-1 text-sm font-semibold text-slate-100">
-                Join Mini-Leagues
+              <p className="text-[11px] text-emerald-300">Battle</p>
+              <p className="text-sm font-semibold text-emerald-100">
+                Play live PvP matches
               </p>
-              <p className="mt-1 text-[11px] text-slate-400">
-                Create or join private leagues and compete with friends for
-                bragging rights.
+              <p className="text-[11px] text-emerald-100/80">
+                Take your evolved 7-a-side squad into Battle Mode and outplay
+                other managers in real time.
               </p>
             </Link>
           </div>
         </section>
       </main>
 
-      {/* NEW: modal for expired / unclaimed listings */}
+      {/* Unclaimed items modal */}
       {showUnclaimedModal && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 sm:p-6">
           <div className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-950/90 ring-1 ring-white/10 p-6">
