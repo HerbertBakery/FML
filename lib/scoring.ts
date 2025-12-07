@@ -8,11 +8,13 @@
 // - Updates per-monster career totals (goals, assists, CS, fantasy points).
 // - Aggregates per-user gameweek totals into UserGameweekScore.
 // - Applies rarity + evolution multipliers to FPL points.
-// - Applies chip-based evolution and blank-based devolution.
+// - Applies chip-based EVOLUTION READINESS (pending evolution) + blank-based devolution.
 //
 // Chips now have LIMITED TRIES:
 // - Initial tries come from ChipTemplate.maxTries (or default 2 if missing).
-// - On success: chip is consumed (isConsumed=true, remainingTries=0).
+// - On success: chip is consumed (isConsumed=true, remainingTries=0) and
+//   the monster gets a *pendingEvolutionLevel* + *pendingEvolutionReason*.
+//   The actual evolutionLevel only changes later when the user clicks "Evolve".
 // - On failure: remainingTries--. If it hits 0, chip is consumed.
 //   You can then re-assign the chip between failures; each assignment uses a “life”.
 //
@@ -326,8 +328,9 @@ async function fetchFplGameweekLiveWithCode(
  * Now also:
  *  - Applies rarity + evolution multipliers to the FPL base points.
  *  - Classifies blanks (basePoints <= 2) and tracks blankStreak.
- *  - Applies chip-based evolution with limited tries.
- *  - Applies blank/disaster devolution.
+ *  - Applies chip-based evolution with limited tries,
+ *    marking successful chips as PENDING EVOLUTIONS (pendingEvolutionLevel + reason).
+ *  - Applies blank/disaster devolution (immediate level down).
  */
 export async function applyGameweekPerformances(
   gameweekNumber: number
@@ -444,6 +447,15 @@ export async function applyGameweekPerformances(
       const evoLevel = (monster as any).evolutionLevel ?? 0;
       const currentBlankStreak = (monster as any).blankStreak ?? 0;
 
+      // Pending evo fields from DB (if any)
+      const existingPendingLevel =
+        (monster as any).pendingEvolutionLevel ?? null;
+      const existingPendingReason =
+        (monster as any).pendingEvolutionReason ?? null;
+
+      let pendingLevel: number | null = existingPendingLevel;
+      let pendingReason: string | null = existingPendingReason;
+
       // Track blank streak
       let newBlankStreak = isBlank ? currentBlankStreak + 1 : 0;
 
@@ -462,6 +474,10 @@ export async function applyGameweekPerformances(
             `Devolved after disastrous performance (${basePoints} base points).`;
           // reset streak so they don't get double-punished
           newBlankStreak = 0;
+
+          // Any previous pending evolutions are wiped by a disaster
+          pendingLevel = null;
+          pendingReason = null;
         } else if (newBlankStreak >= 3) {
           // 3 blanks in a row (<= 2 points)
           newEvoLevel = Math.max(0, newEvoLevel - 1);
@@ -470,6 +486,10 @@ export async function applyGameweekPerformances(
             evoReason ??
             "Devolved after 3 consecutive blanks (base points ≤ 2).";
           newBlankStreak = 0;
+
+          // Blanks that caused a delevel also wipe pending evolution
+          pendingLevel = null;
+          pendingReason = null;
         }
       }
 
@@ -508,17 +528,22 @@ export async function applyGameweekPerformances(
           // SUCCESS CASE:
           // - Always mark the assignment as successful.
           // - Always consume the chip (no more lives).
-          // - If not MYTHICAL and under cap, also evolve the monster.
+          // - If not MYTHICAL and under cap, we DO NOT directly bump evolutionLevel.
+          //   Instead, we mark a pendingEvolutionLevel + pendingEvolutionReason,
+          //   and the user must click "Evolve" in the UI to lock it in.
 
           if (rarity !== "MYTHICAL") {
             const maxEvo = getMaxEvoForRarity(rarity);
-            if (newEvoLevel < maxEvo) {
-              const before = newEvoLevel;
-              newEvoLevel = newEvoLevel + 1;
-              evoChanged = true;
-              const chipReason = `Evolved via chip "${chipTemplate.code}" in GW ${gameweekNumber} (Evo ${before} → ${newEvoLevel}).`;
-              evoReason = evoReason
-                ? `${evoReason} ${chipReason}`
+
+            // Start from the *current* post-devolution level
+            const baseForChip = newEvoLevel;
+            const target = Math.min(baseForChip + 1, maxEvo);
+
+            if (target > baseForChip) {
+              pendingLevel = target;
+              const chipReason = `Ready to evolve via chip "${chipTemplate.code}" in GW ${gameweekNumber} (Evo ${baseForChip} → ${target}).`;
+              pendingReason = pendingReason
+                ? `${pendingReason} ${chipReason}`
                 : chipReason;
             }
           }
@@ -580,12 +605,16 @@ export async function applyGameweekPerformances(
       }
 
       // ---------- Evolution multiplier ----------
+      // NOTE: For scoring THIS gameweek, we use the *current* effective level
+      // after any devolution, but BEFORE pending evolutions are clicked in UI.
       const multiplier = getEvolutionMultiplier(rarity, newEvoLevel);
       const finalPoints = Math.round(basePoints * multiplier);
 
       // Build update payload for this monster
       const monsterUpdateData: any = {
         blankStreak: newBlankStreak,
+        pendingEvolutionLevel: pendingLevel,
+        pendingEvolutionReason: pendingReason,
       };
 
       if (perf) {
@@ -604,17 +633,18 @@ export async function applyGameweekPerformances(
         };
       }
 
+      // Immediate evolution changes ONLY for devolution / downturns.
       if (newEvoLevel !== evoLevel) {
         monsterUpdateData.evolutionLevel = newEvoLevel;
       }
 
-      // Update career totals + streak + evo
+      // Update career totals + streak + evo + pending evolution
       await prisma.userMonster.update({
         where: { id: monster.id },
         data: monsterUpdateData,
       });
 
-      // Log evolution / devolution if it happened
+      // Log evolution / devolution if it happened (delevels only here)
       if (newEvoLevel !== evoLevel) {
         await prisma.evolutionEvent.create({
           data: {
@@ -665,6 +695,6 @@ export async function applyGameweekPerformances(
   }
 
   console.log(
-    `Scored gameweek ${gameweekNumber} for ${entriesArray.length} users (with evo multipliers + chips (limited tries) + blanks).`
+    `Scored gameweek ${gameweekNumber} for ${entriesArray.length} users (with evo multipliers + chips (limited tries, pending evos) + blanks).`
   );
 }

@@ -135,6 +135,10 @@ type PriceHistoryEvent = {
 type MonsterDetailModalProps = {
   monsterId: string;
   onClose: () => void;
+
+  // NEW: optional gameweek context when opened from a GW view
+  gameweekNumber?: number;
+  gameweekPoints?: number;
 };
 
 // Same art logic as marketplace/squad
@@ -152,6 +156,8 @@ function getArtUrlForMonster(m: {
 export default function MonsterDetailModal({
   monsterId,
   onClose,
+  gameweekNumber,
+  gameweekPoints,
 }: MonsterDetailModalProps) {
   const [loading, setLoading] = useState(true);
   const [monster, setMonster] = useState<MonsterDetail | null>(null);
@@ -159,19 +165,18 @@ export default function MonsterDetailModal({
   const [error, setError] = useState<string | null>(null);
 
   // NEW: chip assignments
-  const [chipAssignments, setChipAssignments] = useState<
-    ChipAssignment[]
-  >([]);
+  const [chipAssignments, setChipAssignments] = useState<ChipAssignment[]>(
+    []
+  );
 
   // NEW: market price history
   const [priceHistory, setPriceHistory] = useState<PriceHistoryEvent[]>(
     []
   );
-  const [priceHistoryLoading, setPriceHistoryLoading] =
-    useState(false);
-  const [priceHistoryError, setPriceHistoryError] = useState<
-    string | null
-  >(null);
+  const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
+  const [priceHistoryError, setPriceHistoryError] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -192,9 +197,7 @@ export default function MonsterDetailModal({
 
         if (!res.ok || data.error) {
           if (!cancelled) {
-            setError(
-              data.error || "Failed to load monster details."
-            );
+            setError(data.error || "Failed to load monster details.");
             setMonster(null);
             setHistory([]);
             setChipAssignments([]);
@@ -357,9 +360,7 @@ export default function MonsterDetailModal({
       : null;
 
   // 🔥 Active chip = first unresolved assignment
-  const activeChip = chipAssignments.find(
-    (c) => c.resolvedAt === null
-  );
+  const activeChip = chipAssignments.find((c) => c.resolvedAt === null);
 
   return (
     <div
@@ -394,9 +395,7 @@ export default function MonsterDetailModal({
           )}
 
           {!loading && !error && !monster && (
-            <p className="text-sm text-slate-300">
-              Monster not found.
-            </p>
+            <p className="text-sm text-slate-300">Monster not found.</p>
           )}
 
           {!loading && !error && monster && (
@@ -438,12 +437,25 @@ export default function MonsterDetailModal({
                       Evo Lv. {monster.evolutionLevel}
                     </p>
 
+                    {/* NEW: actual gameweek score when we know it */}
+                    {typeof gameweekPoints === "number" &&
+                      typeof gameweekNumber === "number" && (
+                        <p className="mt-1 text-[11px] text-emerald-300">
+                          Gameweek {gameweekNumber}:{" "}
+                          <span className="font-mono font-semibold">
+                            {gameweekPoints}
+                          </span>{" "}
+                          pts
+                        </p>
+                      )}
+
+                    {/* Career totals (all gameweeks) */}
                     {(monster.totalGoals ||
                       monster.totalAssists ||
                       monster.totalCleanSheets ||
                       monster.totalFantasyPoints) && (
                       <p className="mt-1 text-[11px] text-slate-300">
-                        GW stats:{" "}
+                        Career totals:{" "}
                         <span className="text-emerald-300">
                           {monster.totalGoals ?? 0} G •{" "}
                           {monster.totalAssists ?? 0} A •{" "}
@@ -464,8 +476,8 @@ export default function MonsterDetailModal({
 
                     {monster.isConsumed && (
                       <p className="mt-1 text-[10px] text-amber-300">
-                        This monster has been consumed in an SBC /
-                        special action and is no longer active.
+                        This monster has been consumed in an SBC / special
+                        action and is no longer active.
                       </p>
                     )}
 
@@ -518,13 +530,11 @@ export default function MonsterDetailModal({
                         <p className="mt-0.5 text-[11px] text-slate-200">
                           {event.description}
                         </p>
-                        {(event.actorEmail ||
-                          event.actorUsername) && (
+                        {(event.actorEmail || event.actorUsername) && (
                           <p className="mt-0.5 text-[10px] text-slate-400">
                             By{" "}
                             <span className="font-mono text-slate-200">
-                              {event.actorUsername ||
-                                event.actorEmail}
+                              {event.actorUsername || event.actorEmail}
                             </span>
                           </p>
                         )}
@@ -601,8 +611,8 @@ export default function MonsterDetailModal({
                   !priceHistoryError &&
                   priceHistory.length === 0 && (
                     <p className="text-[11px] text-slate-400">
-                      No marketplace trades recorded yet for this
-                      monster template.
+                      No marketplace trades recorded yet for this monster
+                      template.
                     </p>
                   )}
                 {!priceHistoryLoading &&

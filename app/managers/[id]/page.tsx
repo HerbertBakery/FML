@@ -70,6 +70,12 @@ function getArtUrlForMonster(m: UserMonsterDTO): string {
   return "/cards/base/test.png";
 }
 
+type DetailMonster = {
+  id: string;
+  gameweekPoints?: number;
+  gameweekNumber?: number;
+};
+
 export default function ManagerPage() {
   const params = useParams();
   const managerId = (params?.id as string) || "";
@@ -82,7 +88,11 @@ export default function ManagerPage() {
   const [loadingSquad, setLoadingSquad] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [squadError, setSquadError] = useState<string | null>(null);
-  const [detailMonsterId, setDetailMonsterId] = useState<string | null>(null);
+
+  // NEW: keep track of which monster we’re viewing, plus its GW context
+  const [detailMonster, setDetailMonster] = useState<DetailMonster | null>(
+    null
+  );
 
   // Load manager GW history
   useEffect(() => {
@@ -184,7 +194,12 @@ export default function ManagerPage() {
         def.push(m);
       } else if (pos === "MID" || pos === "M" || pos === "MIDFIELDER") {
         mid.push(m);
-      } else if (pos === "FWD" || pos === "F" || pos === "FORWARD" || pos === "ATT") {
+      } else if (
+        pos === "FWD" ||
+        pos === "F" ||
+        pos === "FORWARD" ||
+        pos === "ATT"
+      ) {
         fwd.push(m);
       } else {
         mid.push(m);
@@ -211,13 +226,13 @@ export default function ManagerPage() {
     return (
       <main className="space-y-4">
         <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-          <p className="text-sm text-slate-300">
-            Invalid manager URL.
-          </p>
+          <p className="text-sm text-slate-300">Invalid manager URL.</p>
         </section>
       </main>
     );
   }
+
+  const currentGameweekNumber = gwSquad?.gameweek?.number;
 
   return (
     <>
@@ -239,9 +254,7 @@ export default function ManagerPage() {
               </p>
             )}
             {error && (
-              <p className="mt-2 text-xs text-red-400">
-                {error}
-              </p>
+              <p className="mt-2 text-xs text-red-400">{error}</p>
             )}
             {!loadingHistory && !error && manager && (
               <p className="mt-2 text-xs text-slate-400">
@@ -263,7 +276,9 @@ export default function ManagerPage() {
               {gwSquad?.gameweek ? (
                 <p className="text-[11px] text-emerald-200">
                   Gameweek {gwSquad.gameweek.number}{" "}
-                  {gwSquad.gameweek.name ? `– ${gwSquad.gameweek.name}` : ""}
+                  {gwSquad.gameweek.name
+                    ? `– ${gwSquad.gameweek.name}`
+                    : ""}
                 </p>
               ) : hasGwHistory ? (
                 <p className="text-[11px] text-emerald-200">
@@ -280,14 +295,12 @@ export default function ManagerPage() {
                 </p>
               )}
               {squadError && (
-                <p className="text-[11px] text-red-300">
-                  {squadError}
-                </p>
+                <p className="text-[11px] text-red-300">{squadError}</p>
               )}
               {noMonstersButHasScore && (
                 <p className="mt-1 text-[10px] text-emerald-200/80">
-                  This gameweek only has a total score stored – a per-monster
-                  breakdown was not recorded.
+                  This gameweek only has a total score stored – a
+                  per-monster breakdown was not recorded.
                 </p>
               )}
             </div>
@@ -323,13 +336,20 @@ export default function ManagerPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={gwIndex === null || gwIndex >= gwHistory.length - 1}
+                    disabled={
+                      gwIndex === null || gwIndex >= gwHistory.length - 1
+                    }
                     onClick={() => {
-                      if (gwIndex === null || gwIndex >= gwHistory.length - 1) return;
+                      if (
+                        gwIndex === null ||
+                        gwIndex >= gwHistory.length - 1
+                      )
+                        return;
                       setGwIndex(gwIndex + 1);
                     }}
                     className={`h-7 w-7 rounded-full border text-xs ${
-                      gwIndex === null || gwIndex >= gwHistory.length - 1
+                      gwIndex === null ||
+                      gwIndex >= gwHistory.length - 1
                         ? "border-emerald-900 text-emerald-700 cursor-not-allowed"
                         : "border-emerald-500/60 text-emerald-100 hover:border-emerald-300"
                     }`}
@@ -354,7 +374,13 @@ export default function ManagerPage() {
                     <PitchCard
                       key={m.id}
                       monster={m}
-                      onClickDetails={() => setDetailMonsterId(m.id)}
+                      onClickDetails={() =>
+                        setDetailMonster({
+                          id: m.id,
+                          gameweekPoints: m.gameweekPoints,
+                          gameweekNumber: currentGameweekNumber,
+                        })
+                      }
                     />
                   ))
                 ) : (
@@ -369,7 +395,13 @@ export default function ManagerPage() {
                     <PitchCard
                       key={m.id}
                       monster={m}
-                      onClickDetails={() => setDetailMonsterId(m.id)}
+                      onClickDetails={() =>
+                        setDetailMonster({
+                          id: m.id,
+                          gameweekPoints: m.gameweekPoints,
+                          gameweekNumber: currentGameweekNumber,
+                        })
+                      }
                     />
                   ))
                 ) : (
@@ -384,7 +416,13 @@ export default function ManagerPage() {
                     <PitchCard
                       key={m.id}
                       monster={m}
-                      onClickDetails={() => setDetailMonsterId(m.id)}
+                      onClickDetails={() =>
+                        setDetailMonster({
+                          id: m.id,
+                          gameweekPoints: m.gameweekPoints,
+                          gameweekNumber: currentGameweekNumber,
+                        })
+                      }
                     />
                   ))
                 ) : (
@@ -399,7 +437,13 @@ export default function ManagerPage() {
                     <PitchCard
                       key={m.id}
                       monster={m}
-                      onClickDetails={() => setDetailMonsterId(m.id)}
+                      onClickDetails={() =>
+                        setDetailMonster({
+                          id: m.id,
+                          gameweekPoints: m.gameweekPoints,
+                          gameweekNumber: currentGameweekNumber,
+                        })
+                      }
                     />
                   ))
                 ) : (
@@ -436,10 +480,12 @@ export default function ManagerPage() {
         </section>
       </main>
 
-      {detailMonsterId && (
+      {detailMonster && (
         <MonsterDetailModal
-          monsterId={detailMonsterId}
-          onClose={() => setDetailMonsterId(null)}
+          monsterId={detailMonster.id}
+          gameweekNumber={detailMonster.gameweekNumber}
+          gameweekPoints={detailMonster.gameweekPoints}
+          onClose={() => setDetailMonster(null)}
         />
       )}
     </>

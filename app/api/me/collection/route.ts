@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
     baseMagic: m.baseMagic,
     baseDefense: m.baseDefense,
     evolutionLevel: m.evolutionLevel,
+    pendingEvolutionLevel: m.pendingEvolutionLevel ?? null,
 
     // edition + art fields
     setCode: m.setCode ?? null,

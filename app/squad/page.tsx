@@ -24,6 +24,7 @@ type UserMonsterDTO = {
   baseMagic: number;
   baseDefense: number;
   evolutionLevel: number;
+  pendingEvolutionLevel?: number | null;
   artBasePath?: string | null;
   setCode?: string | null;
   editionType?: string | null;
@@ -156,6 +157,9 @@ export default function SquadPage() {
   const [gwLoading, setGwLoading] = useState(false);
   const [gwError, setGwError] = useState<string | null>(null);
 
+  // Evolving state (which monster is currently being evolved)
+  const [evolvingMonsterId, setEvolvingMonsterId] = useState<string | null>(null);
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -174,13 +178,11 @@ export default function SquadPage() {
           credentials: "include",
         });
         if (colRes.ok) {
-          // AFTER – preload ALL monster art
-const colData: CollectionResponse = await colRes.json();
-setCollection(colData.monsters);
+          const colData: CollectionResponse = await colRes.json();
+          setCollection(colData.monsters);
 
-const urls = colData.monsters.map((m) => getArtUrlForMonster(m));
-void preloadImages(urls);
-
+          const urls = colData.monsters.map((m) => getArtUrlForMonster(m));
+          void preloadImages(urls);
         }
 
         // Default squad
@@ -383,6 +385,38 @@ void preloadImages(urls);
       setError("Something went wrong saving and locking your squad.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // 🔥 Click-to-evolve handler
+  async function handleEvolve(monsterId: string) {
+    setError(null);
+    setSuccess(null);
+    setEvolvingMonsterId(monsterId);
+
+    try {
+      const res = await fetch(`/api/me/monsters/${monsterId}/evolve`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        setError(data?.error || "Failed to evolve this monster.");
+        return;
+      }
+
+      setSuccess("Monster evolved! 🎉");
+
+      // For now, simplest: reload to pick up new evolution level & clear pending
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    } catch {
+      setError("Failed to evolve this monster.");
+    } finally {
+      setEvolvingMonsterId(null);
     }
   }
 
@@ -704,13 +738,25 @@ void preloadImages(urls);
                   {/* GK */}
                   <div className="flex justify-center mb-4">
                     {pitchByLine.GK.length ? (
-                      pitchByLine.GK.map((m) => (
-                        <PitchCard
-                          key={m.id}
-                          monster={m}
-                          chip={monsterChipMap[m.id]}
-                        />
-                      ))
+                      pitchByLine.GK.map((m) => {
+                        const canEvolve =
+                          typeof m.pendingEvolutionLevel === "number" &&
+                          m.pendingEvolutionLevel > m.evolutionLevel;
+                        return (
+                          <PitchCard
+                            key={m.id}
+                            monster={m}
+                            chip={monsterChipMap[m.id]}
+                            canEvolve={canEvolve}
+                            isEvolving={evolvingMonsterId === m.id}
+                            onEvolve={
+                              canEvolve
+                                ? () => handleEvolve(m.id)
+                                : undefined
+                            }
+                          />
+                        );
+                      })
                     ) : (
                       <PitchPlaceholder label="GK" />
                     )}
@@ -719,13 +765,25 @@ void preloadImages(urls);
                   {/* DEF */}
                   <div className="flex justify-center gap-3 mb-4">
                     {pitchByLine.DEF.length ? (
-                      pitchByLine.DEF.map((m) => (
-                        <PitchCard
-                          key={m.id}
-                          monster={m}
-                          chip={monsterChipMap[m.id]}
-                        />
-                      ))
+                      pitchByLine.DEF.map((m) => {
+                        const canEvolve =
+                          typeof m.pendingEvolutionLevel === "number" &&
+                          m.pendingEvolutionLevel > m.evolutionLevel;
+                        return (
+                          <PitchCard
+                            key={m.id}
+                            monster={m}
+                            chip={monsterChipMap[m.id]}
+                            canEvolve={canEvolve}
+                            isEvolving={evolvingMonsterId === m.id}
+                            onEvolve={
+                              canEvolve
+                                ? () => handleEvolve(m.id)
+                                : undefined
+                            }
+                          />
+                        );
+                      })
                     ) : (
                       <PitchPlaceholder label="DEF" />
                     )}
@@ -734,13 +792,25 @@ void preloadImages(urls);
                   {/* MID */}
                   <div className="flex justify-center gap-3 mb-4">
                     {pitchByLine.MID.length ? (
-                      pitchByLine.MID.map((m) => (
-                        <PitchCard
-                          key={m.id}
-                          monster={m}
-                          chip={monsterChipMap[m.id]}
-                        />
-                      ))
+                      pitchByLine.MID.map((m) => {
+                        const canEvolve =
+                          typeof m.pendingEvolutionLevel === "number" &&
+                          m.pendingEvolutionLevel > m.evolutionLevel;
+                        return (
+                          <PitchCard
+                            key={m.id}
+                            monster={m}
+                            chip={monsterChipMap[m.id]}
+                            canEvolve={canEvolve}
+                            isEvolving={evolvingMonsterId === m.id}
+                            onEvolve={
+                              canEvolve
+                                ? () => handleEvolve(m.id)
+                                : undefined
+                            }
+                          />
+                        );
+                      })
                     ) : (
                       <PitchPlaceholder label="MID" />
                     )}
@@ -749,13 +819,25 @@ void preloadImages(urls);
                   {/* FWD */}
                   <div className="flex justify-center gap-3">
                     {pitchByLine.FWD.length ? (
-                      pitchByLine.FWD.map((m) => (
-                        <PitchCard
-                          key={m.id}
-                          monster={m}
-                          chip={monsterChipMap[m.id]}
-                        />
-                      ))
+                      pitchByLine.FWD.map((m) => {
+                        const canEvolve =
+                          typeof m.pendingEvolutionLevel === "number" &&
+                          m.pendingEvolutionLevel > m.evolutionLevel;
+                        return (
+                          <PitchCard
+                            key={m.id}
+                            monster={m}
+                            chip={monsterChipMap[m.id]}
+                            canEvolve={canEvolve}
+                            isEvolving={evolvingMonsterId === m.id}
+                            onEvolve={
+                              canEvolve
+                                ? () => handleEvolve(m.id)
+                                : undefined
+                            }
+                          />
+                        );
+                      })
                     ) : (
                       <PitchPlaceholder label="FWD" />
                     )}
@@ -896,9 +978,8 @@ void preloadImages(urls);
                         const chip = monsterChipMap[monster.id];
 
                         return (
-                          <button
+                          <div
                             key={monster.id}
-                            type="button"
                             onClick={() => !disabled && toggleSelect(monster.id)}
                             className={`text-left rounded-xl border p-3 text-xs transition ${
                               selected
@@ -957,7 +1038,7 @@ void preloadImages(urls);
                             >
                               View details
                             </button>
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -982,14 +1063,26 @@ void preloadImages(urls);
 function PitchCard({
   monster,
   chip,
+  canEvolve,
+  isEvolving,
+  onEvolve,
 }: {
   monster: PitchMonster;
   chip?: ActiveChipInfo;
+  canEvolve?: boolean;
+  isEvolving?: boolean;
+  onEvolve?: () => void;
 }) {
   const artUrl = getArtUrlForMonster(monster);
 
   return (
-    <div className="min-w-[90px] rounded-lg border border-emerald-300/70 bg-emerald-900/80 px-2 py-2 text-center shadow-md flex flex-col items-center">
+    <div
+      className={`min-w-[90px] rounded-lg border px-2 py-2 text-center shadow-md flex flex-col items-center bg-emerald-900/80 ${
+        canEvolve
+          ? "border-emerald-300 shadow-[0_0_18px_rgba(45,212,191,0.85)] animate-pulse"
+          : "border-emerald-300/70"
+      }`}
+    >
       <div className="mb-1 w-12 h-16 overflow-hidden rounded-[6px] border border-emerald-300/60 bg-slate-900/60">
         <img
           src={artUrl}
@@ -1022,6 +1115,17 @@ function PitchCard({
             {monster.gameweekPoints}
           </span>
         </div>
+      )}
+
+      {canEvolve && onEvolve && (
+        <button
+          type="button"
+          onClick={onEvolve}
+          disabled={isEvolving}
+          className="mt-1 rounded-full bg-emerald-400 px-2 py-0.5 text-[10px] font-semibold text-slate-950 hover:bg-emerald-300 disabled:opacity-60"
+        >
+          {isEvolving ? "Evolving..." : "Evolve"}
+        </button>
       )}
     </div>
   );

@@ -89,6 +89,11 @@ model UserMonster {
 
   // Evolution + cumulative stats
   evolutionLevel     Int                  @default(0)
+
+  // NEW: pending “click to evolve” target level + reason
+  pendingEvolutionLevel  Int?
+  pendingEvolutionReason String?
+
   totalGoals         Int                  @default(0)
   totalAssists       Int                  @default(0)
   totalCleanSheets   Int                  @default(0)
