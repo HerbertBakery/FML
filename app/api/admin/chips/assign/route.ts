@@ -5,7 +5,8 @@
 //
 // Attaches a chip to a monster for a specific gameweek.
 // During scoring, lib/scoring.ts will read MonsterChipAssignment,
-// evaluate the condition, evolve if successful, then consume chip + delete assignment.
+// evaluate the condition, evolve if successful, then consume chip and
+// decrement remainingTries.
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -78,6 +79,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (
+      typeof userChip.remainingTries === "number" &&
+      userChip.remainingTries <= 0
+    ) {
+      return NextResponse.json(
+        { error: "This chip has no tries left." },
+        { status: 400 }
+      );
+    }
+
+    // Ensure this chip is not already assigned somewhere for an upcoming GW
+    const existingForChip = await prisma.monsterChipAssignment.findFirst({
+      where: {
+        userChipId: userChip.id,
+        resolvedAt: null,
+      },
+    });
+
+    if (existingForChip) {
+      return NextResponse.json(
+        {
+          error:
+            "This chip is already assigned to a monster for an upcoming gameweek.",
+        },
+        { status: 400 }
+      );
+    }
+
     // Load monster and validate ownership
     const userMonster = await prisma.userMonster.findUnique({
       where: { id: userMonsterId },
@@ -97,13 +126,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Ensure the monster does not already have an unresolved chip assignment
+    const existingForMonster = await prisma.monsterChipAssignment.findFirst({
+      where: {
+        userMonsterId: userMonster.id,
+        resolvedAt: null,
+      },
+    });
+
+    if (existingForMonster) {
+      return NextResponse.json(
+        {
+          error:
+            "This monster already has a chip assigned for an upcoming gameweek.",
+        },
+        { status: 400 }
+      );
+    }
+
     // Ensure gameweek exists
     let gw = await prisma.gameweek.findFirst({
       where: { number: gameweekNumber },
     });
 
     if (!gw) {
-      // You may or may not want auto-create here; I’ll keep it consistent with scoring:
+      // Keep consistent with scoring: auto-create if missing
       gw = await prisma.gameweek.create({
         data: {
           number: gameweekNumber,
@@ -112,25 +159,6 @@ export async function POST(req: NextRequest) {
           isActive: false,
         },
       });
-    }
-
-    // Optional: prevent multiple chips on the same monster+GW
-    const existing = await prisma.monsterChipAssignment.findFirst({
-      where: {
-        userMonsterId: userMonster.id,
-        gameweekId: gw.id,
-      },
-    });
-
-    if (existing) {
-      // Either block or replace. Let's block for now:
-      return NextResponse.json(
-        {
-          error:
-            "This monster already has a chip assigned for that gameweek.",
-        },
-        { status: 400 }
-      );
     }
 
     const assignment = await prisma.monsterChipAssignment.create({

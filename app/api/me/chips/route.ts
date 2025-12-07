@@ -42,9 +42,9 @@ export async function GET(req: NextRequest) {
     const dto = chips.map((chip) => ({
       id: chip.id,
       isConsumed: chip.isConsumed,
-      // 🔥 NEW: expose how many lives this instance has left
+      // 🔥 expose how many lives this instance has left
       remainingTries: chip.remainingTries,
-      // 🔥 NEW: expose max tries from the template for UI display
+      // 🔥 expose max tries from the template for UI display
       maxTries: chip.template.maxTries,
       createdAt: chip.createdAt,
       consumedAt: chip.consumedAt,

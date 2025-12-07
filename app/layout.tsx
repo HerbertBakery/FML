@@ -113,13 +113,6 @@ export default function RootLayout({
               </Link>
 
               <Link
-                href="/chips"
-                className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900/80 transition-colors"
-              >
-                Evos
-              </Link>
-
-              <Link
                 href="/battle"
                 className="inline-flex items-center justify-center rounded-full border border-emerald-500 bg-emerald-500/15 px-3 py-1.5 text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:border-emerald-300 hover:text-emerald-100 hover:bg-emerald-500/25 transition-colors"
               >
