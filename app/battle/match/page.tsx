@@ -1,4 +1,3 @@
-// app/battle/match/page.tsx
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -925,7 +924,10 @@ function playCardFromHand(
             log,
           };
 
-    if (nextAfterSpell.player.hero.hp <= 0 && nextAfterSpell.opponent.hero.hp <= 0) {
+    if (
+      nextAfterSpell.player.hero.hp <= 0 &&
+      nextAfterSpell.opponent.hero.hp <= 0
+    ) {
       nextAfterSpell = { ...nextAfterSpell, winner: "DRAW" };
     } else if (nextAfterSpell.player.hero.hp <= 0) {
       nextAfterSpell = { ...nextAfterSpell, winner: "opponent" };
@@ -1462,7 +1464,7 @@ function BattleMatchInner() {
       return;
     }
     const m = battle.player.board[idx];
-    if (!m) return;
+       if (!m) return;
     if (!m.canAttack) {
       setActionMessage("This monster can’t attack right now.");
       return;
@@ -2509,92 +2511,180 @@ function BattleMonsterCardView(props: {
 
 function renderHand(
   hand: BattleCard[],
-  manaAvailable: number,
-  battleOver: boolean,
+  currentMana: number,
+  isBattleOver: boolean,
   onPlay: (index: number) => void
 ) {
   if (hand.length === 0) {
-    return <p className="text-[11px] text-slate-400">No cards in hand.</p>;
+    return (
+      <p className="text-[11px] text-slate-400">
+        Your hand is empty. Draw more cards with your Hero Power or wait for
+        the next turn.
+      </p>
+    );
   }
 
-  const isInitialDeal = hand.length <= 3;
-
   return hand.map((card, idx) => {
-    const isDisabled = battleOver || card.manaCost > manaAvailable;
-
-    const dealStyle = isInitialDeal
-      ? {
-          animation: "deal-in 0.35s ease-out forwards",
-          animationDelay: `${idx * 120}ms`,
-        }
-      : undefined;
+    const isPlayable = !isBattleOver && card.manaCost <= currentMana;
+    const disabled = !isPlayable;
 
     if (card.kind === "MONSTER") {
+      const monster = card as BattleMonsterCard;
+      const artUrl = monster.artUrl || "/cards/base/test.png";
+
+      const rarityBorder = (() => {
+        const tier = monster.rarityTier;
+        switch (tier) {
+          case "COMMON":
+            return "border-slate-600";
+          case "RARE":
+            return "border-sky-500/80";
+          case "EPIC":
+            return "border-purple-500/80";
+          case "LEGENDARY":
+            return "border-amber-400/90";
+          case "MYTHIC":
+            return "border-pink-400/90";
+          default:
+            return "border-slate-600";
+        }
+      })();
+
+      const positionColor = (() => {
+        switch (monster.position) {
+          case "GK":
+            return "bg-emerald-700/90";
+          case "DEF":
+            return "bg-sky-700/90";
+          case "MID":
+            return "bg-purple-700/90";
+          case "FWD":
+            return "bg-rose-700/90";
+          default:
+            return "bg-slate-700/90";
+        }
+      })();
+
       return (
         <button
           key={card.id}
           type="button"
-          onClick={() => !isDisabled && onPlay(idx)}
-          disabled={isDisabled}
-          style={dealStyle}
-          className={`relative rounded-2xl border border-slate-700 bg-slate-950/80 p-1 text-left text-[11px] transition ${
-            isDisabled
-              ? "cursor-not-allowed opacity-50"
-              : "hover:border-emerald-400"
+          onClick={() => !disabled && onPlay(idx)}
+          disabled={disabled}
+          className={`group relative h-32 w-24 rounded-2xl border ${rarityBorder} bg-slate-900 shadow-md transition-transform ${
+            disabled
+              ? "cursor-not-allowed opacity-40"
+              : "cursor-pointer hover:-translate-y-1"
           }`}
         >
-          <BattleMonsterCardView
-            card={card}
-            owner="player"
-            isSelected={false}
-            showStatusOverlay={false}
+          {/* Full art (no blur) */}
+          <img
+            src={artUrl}
+            alt={monster.name}
+            className="absolute inset-0 h-full w-full object-cover"
           />
+
+          {/* Dark gradient */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-slate-950/10" />
+
+          {/* Position chip */}
+          <div
+            className={`absolute left-1 top-1 rounded-full px-2 py-0.5 ${positionColor}`}
+          >
+            <span className="text-[9px] font-semibold uppercase text-slate-50">
+              {monster.position}
+            </span>
+          </div>
+
+          {/* Bottom row: attack / mana / health */}
+          <div className="absolute inset-x-1 bottom-1 flex items-center justify-between gap-1">
+            {/* Attack */}
+            <div className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-400/80 bg-emerald-900/90">
+              <span className="text-[11px] font-bold text-emerald-300">
+                {monster.attack}
+              </span>
+            </div>
+
+            {/* Mana (same position as on-board card) */}
+            <div className="flex min-w-[1.9rem] items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 px-2 shadow">
+              <span className="text-[11px] font-bold text-slate-950">
+                {monster.manaCost}
+              </span>
+            </div>
+
+            {/* Health */}
+            <div className="flex h-7 w-7 items-center justify-center rounded-full border border-red-400/80 bg-red-900/90">
+              <span className="text-[11px] font-bold text-red-300">
+                {monster.health}
+              </span>
+            </div>
+          </div>
         </button>
       );
     }
 
-    // Spell card – use art if provided
+    // ---- SPELL CARD (graphic + mana only; name + description on hover) ----
     const spell = card as BattleSpellCard;
-    const spellArtUrl =
-      spell.artUrl || "/cards/spells/default-spell.png";
+    const artUrl = spell.artUrl || "/cards/base/test.png";
 
     return (
-      <button
-        key={card.id}
-        type="button"
-        onClick={() => !isDisabled && onPlay(idx)}
-        disabled={isDisabled}
-        style={dealStyle}
-        className={`relative h-28 w-20 overflow-hidden rounded-2xl border text-left text-[11px] transition bg-slate-900 ${
-          isDisabled
-            ? "cursor-not-allowed border-slate-800 opacity-50"
-            : "border-purple-500/70 hover:border-emerald-400"
-        }`}
+      <div
+        key={spell.id}
+        className="group relative"
       >
-        {/* Art background */}
-        <div className="absolute inset-0">
+        <button
+          type="button"
+          onClick={() => !disabled && onPlay(idx)}
+          disabled={disabled}
+          className={`relative h-32 w-24 overflow-hidden rounded-2xl border border-indigo-400/80 bg-slate-900 shadow-md transition-transform ${
+            disabled
+              ? "cursor-not-allowed opacity-40"
+              : "cursor-pointer hover:-translate-y-1"
+          }`}
+        >
+          {/* Full art (no blur) */}
           <img
-            src={spellArtUrl}
+            src={artUrl}
             alt={spell.name}
-            className="h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-slate-950/40 via-slate-950/60 to-slate-950/90" />
-        </div>
 
-        {/* Mana crystal (still at top for spells – only monsters changed) */}
-        <div className="absolute -top-2 left-1/2 z-10 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 shadow">
-          <span className="text-[10px] font-bold text-slate-950">
-            {spell.manaCost}
-          </span>
-        </div>
+          {/* Gradient for readability */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-slate-950/10" />
 
-        <div className="relative z-10 mt-3 px-2 leading-tight text-slate-50 line-clamp-2">
-          {spell.name}
+          {/* Small "Spell" tag in top-left */}
+          <div className="absolute left-1 top-1 rounded-full bg-indigo-600/90 px-2 py-0.5">
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-50">
+              Spell
+            </span>
+          </div>
+
+          {/* BOTTOM: mana pill centered (same as monster cards) */}
+          <div className="absolute inset-x-1 bottom-1 flex items-center justify-center">
+            <div className="flex min-w-[1.9rem] items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 px-2 shadow">
+              <span className="text-[11px] font-bold text-slate-950">
+                {spell.manaCost}
+              </span>
+            </div>
+          </div>
+        </button>
+
+        {/* HOVER TOOLTIP with name + description (no name on the card itself) */}
+        <div className="pointer-events-none absolute -top-1 left-1/2 z-20 hidden w-56 -translate-x-1/2 -translate-y-full flex-col rounded-xl border border-slate-700 bg-slate-950/95 p-2 text-left shadow-xl group-hover:flex">
+          <p className="text-[11px] font-semibold text-indigo-100">
+            {spell.name}
+          </p>
+          <p className="mt-1 text-[10px] text-slate-200">
+            {spell.description}
+          </p>
+          <p className="mt-1 text-[9px] text-slate-400">
+            Mana cost:{" "}
+            <span className="font-mono text-sky-300">
+              {spell.manaCost}
+            </span>
+          </p>
         </div>
-        <div className="relative z-10 mt-1 px-2 text-[10px] text-slate-300 line-clamp-4">
-          {spell.description}
-        </div>
-      </button>
+      </div>
     );
   });
 }
@@ -2606,8 +2696,25 @@ function DeckSelectionCard(props: {
   onToggle: () => void;
 }) {
   const { monster, selected, disabled, onToggle } = props;
-
   const artUrl = getArtUrlForMonster(monster);
+
+  const rarityTier = normalizeRarity(monster.rarity);
+  const rarityBorder = (() => {
+    switch (rarityTier) {
+      case "COMMON":
+        return "border-slate-600";
+      case "RARE":
+        return "border-sky-500/80";
+      case "EPIC":
+        return "border-purple-500/80";
+      case "LEGENDARY":
+        return "border-amber-400/90";
+      case "MYTHIC":
+        return "border-pink-400/90";
+      default:
+        return "border-slate-600";
+    }
+  })();
 
   const positionColor = (() => {
     switch (monster.position) {
@@ -2624,91 +2731,75 @@ function DeckSelectionCard(props: {
     }
   })();
 
-  const rarityText =
-    monster.rarity && monster.rarity.length > 0
-      ? monster.rarity.toUpperCase()
-      : "";
-
   return (
     <button
       type="button"
       onClick={onToggle}
-      disabled={disabled && !selected}
-      className={`relative overflow-hidden rounded-2xl border text-left text-xs transition ${
-        selected
-          ? "border-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-400/70"
-          : disabled
-          ? "cursor-not-allowed border-slate-800 bg-slate-950/60 opacity-60"
-          : "border-slate-700 bg-slate-950/80 hover:border-emerald-400"
+      disabled={disabled}
+      className={`group relative flex items-stretch gap-2 rounded-2xl border ${rarityBorder} bg-slate-900/80 p-2 text-left shadow-md transition ${
+        disabled && !selected
+          ? "cursor-not-allowed opacity-40"
+          : "cursor-pointer hover:-translate-y-1 hover:border-emerald-400"
       }`}
     >
-      <div className="relative h-52 w-full bg-slate-950">
-        {/* Full monster art – no crop (object-contain) */}
+      {/* Art */}
+      <div className="relative h-20 w-16 overflow-hidden rounded-xl">
         <img
           src={artUrl}
           alt={monster.displayName || monster.realPlayerName}
-          className="h-full w-full object-contain"
+          className="h-full w-full object-cover"
         />
-
-        {/* Soft overlay for text readability */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/20 to-slate-950/10" />
-
-        {/* Position chip */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/30 to-slate-950/10" />
         <div
-          className={`absolute left-2 top-2 rounded-full px-2 py-0.5 ${positionColor}`}
+          className={`absolute left-1 top-1 rounded-full px-2 py-0.5 ${positionColor}`}
         >
           <span className="text-[9px] font-semibold uppercase text-slate-50">
             {monster.position}
           </span>
         </div>
+      </div>
 
-        {/* Rarity tag */}
-        {rarityText && (
-          <div className="absolute right-2 top-2 rounded-full bg-slate-950/80 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-200">
-            {rarityText}
-          </div>
-        )}
-
-        {/* Name + club */}
-        <div className="absolute inset-x-2 bottom-11 space-y-0.5">
-          <p className="line-clamp-1 text-[10px] font-semibold text-slate-50">
+      {/* Info */}
+      <div className="flex min-w-0 flex-1 flex-col justify-between">
+        <div className="space-y-0.5">
+          <p className="truncate text-[12px] font-semibold text-slate-100">
             {monster.displayName || monster.realPlayerName}
           </p>
-          <p className="line-clamp-1 text-[9px] text-slate-300">
+          <p className="truncate text-[10px] text-slate-400">
             {monster.club}
           </p>
-          {monster.evolutionLevel > 0 && (
-            <p className="text-[9px] text-indigo-300">
-              Evo {monster.evolutionLevel}
-            </p>
-          )}
-        </div>
-
-        {/* ATK pill */}
-        <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-emerald-900/90 px-2 py-0.5">
-          <span className="text-[9px] font-semibold uppercase text-emerald-200">
-            ATK
-          </span>
-          <span className="text-[11px] font-bold text-emerald-50">
-            {monster.baseAttack}
-          </span>
-        </div>
-
-        {/* DEF pill */}
-        <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-red-900/90 px-2 py-0.5">
-          <span className="text-[9px] font-semibold uppercase text-red-200">
-            DEF
-          </span>
-          <span className="text-[11px] font-bold text-red-50">
+          <p className="text-[10px] text-slate-400">
+            ATK {monster.baseAttack} • MAG {monster.baseMagic} • DEF{" "}
             {monster.baseDefense}
-          </span>
+          </p>
         </div>
+        <div className="mt-1 flex items-center justify-between text-[10px]">
+          <span className="rounded-full bg-slate-800/90 px-2 py-0.5 text-slate-200">
+            {monster.rarity}
+          </span>
+          {typeof monster.evolutionLevel === "number" &&
+            monster.evolutionLevel > 0 && (
+              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-emerald-200">
+                Evo {monster.evolutionLevel}
+              </span>
+            )}
+        </div>
+      </div>
 
-        {/* Selected badge */}
-        {selected && (
-          <div className="absolute left-1/2 top-2 -translate-x-1/2 rounded-full bg-emerald-500/80 px-2 py-0.5 text-[9px] font-semibold text-slate-950">
+      {/* Selection pill */}
+      <div className="absolute right-2 top-2">
+        {selected ? (
+          <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-semibold text-slate-950">
             In XI
-          </div>
+          </span>
+        ) : monster.position === "GK" ? (
+          <span className="rounded-full bg-emerald-900/80 px-2 py-0.5 text-[9px] text-emerald-200">
+            GK (hero only)
+          </span>
+        ) : (
+          <span className="rounded-full bg-slate-800/80 px-2 py-0.5 text-[9px] text-slate-200">
+            Tap to add
+          </span>
         )}
       </div>
     </button>

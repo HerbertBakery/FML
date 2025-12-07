@@ -27,10 +27,11 @@ export function verifySessionToken(token: string): SessionPayload | null {
   }
 }
 
-// Note: we keep the NextRequest argument for compatibility,
-// but we no longer use req.cookies – we use cookies() instead.
+// Next.js 15+ requires cookies() to be awaited inside server handlers/helpers.
 export async function getUserFromRequest(_req?: NextRequest) {
-  const cookieStore = cookies();
+  // ✅ FIX: cookies() must be awaited to avoid "sync dynamic API" error
+  const cookieStore = await cookies();
+
   const cookie = cookieStore.get("fml_session");
   if (!cookie?.value) {
     return null;

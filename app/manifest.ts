@@ -1,4 +1,3 @@
-// app/manifest.ts
 import { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
@@ -8,8 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Fantasy football with monsterized Premier League players.",
     start_url: "/",
     display: "standalone",
-    // 🔒 Prefer landscape when installed to home screen
-    orientation: "landscape",
+    // orientation removed so users can rotate freely
     background_color: "#020617",
     theme_color: "#22c55e",
     icons: [
