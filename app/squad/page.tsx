@@ -1202,6 +1202,8 @@ export default function SquadPage() {
                           getArtUrlForMonster(monster);
                         const chip =
                           monsterChipMap[monster.id];
+                        const isLimited =
+                          monster.editionType === "LIMITED";
 
                         const handleCardClick = () => {
                           if (chipMode && selectedChipInfo) {
@@ -1213,30 +1215,49 @@ export default function SquadPage() {
                           }
                         };
 
+                        const cursorClass = chipMode
+                          ? "cursor-crosshair"
+                          : disabled
+                          ? "cursor-not-allowed"
+                          : "cursor-pointer";
+
+                        let stateClass: string;
+                        if (disabled) {
+                          stateClass =
+                            "border-slate-800 bg-slate-950/40 opacity-50";
+                        } else if (selected) {
+                          stateClass =
+                            "border-emerald-400 bg-emerald-500/10";
+                        } else {
+                          stateClass =
+                            "border-slate-700 bg-slate-950/60 hover:border-emerald-400";
+                        }
+
+                        // Override styling if this is a limited-edition card
+                        if (isLimited) {
+                          stateClass = selected
+                            ? "border-amber-400 bg-gradient-to-b from-amber-900/70 via-amber-800/40 to-slate-950 shadow-[0_0_25px_rgba(251,191,36,0.5)]"
+                            : "border-amber-300 bg-gradient-to-b from-amber-900/60 via-slate-950 to-amber-950 hover:border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]";
+                        }
+
                         return (
                           <div
                             key={monster.id}
                             onClick={handleCardClick}
-                            className={`text-left rounded-xl border p-3 text-xs transition ${
-                              chipMode
-                                ? "cursor-crosshair"
-                                : disabled
-                                ? "cursor-not-allowed"
-                                : "cursor-pointer"
-                            } ${
-                              selected
-                                ? "border-emerald-400 bg-emerald-500/10"
-                                : disabled
-                                ? "border-slate-800 bg-slate-950/40 opacity-50"
-                                : "border-slate-700 bg-slate-950/60 hover:border-emerald-400"
-                            }`}
+                            className={`text-left rounded-xl border p-3 text-xs transition ${cursorClass} ${stateClass}`}
                           >
-                            <div className="mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4]">
+                            <div
+                              className={`mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4] ${
+                                isLimited
+                                  ? "ring-1 ring-amber-400/70 shadow-[0_0_30px_rgba(251,191,36,0.45)]"
+                                  : ""
+                              }`}
+                            >
                               <img
                                 src={artUrl}
                                 alt={monster.displayName}
                                 className={`w-full h-full object-cover ${
-                                  chipMode
+                                  chipMode && !isLimited
                                     ? "ring-1 ring-violet-400/50"
                                     : ""
                                 }`}
@@ -1247,10 +1268,31 @@ export default function SquadPage() {
                               <span className="font-semibold">
                                 {monster.displayName}
                               </span>
-                              <span className="text-[10px] uppercase text-emerald-300">
+                              <span
+                                className={`text-[10px] uppercase ${
+                                  isLimited
+                                    ? "text-amber-300 font-semibold"
+                                    : "text-emerald-300"
+                                }`}
+                              >
                                 {monster.rarity}
                               </span>
                             </div>
+
+                            {/* Limited edition label + serial */}
+                            {isLimited && (
+                              <p className="text-[10px] text-amber-300 mb-1">
+                                {monster.editionLabel || "Limited Edition"}
+                                {typeof monster.serialNumber ===
+                                  "number" && (
+                                  <>
+                                    {" "}
+                                    • #
+                                    {monster.serialNumber}
+                                  </>
+                                )}
+                              </p>
+                            )}
 
                             {chip && (
                               <div className="mb-1">
@@ -1324,19 +1366,29 @@ function PitchCard({
 }) {
   const artUrl = getArtUrlForMonster(monster);
   const clickable = assignMode && !!onAssignChip;
+  const isLimited = monster.editionType === "LIMITED";
+
+  const baseClass = clickable
+    ? "border-violet-400 bg-emerald-900/80 ring-2 ring-violet-500/50 animate-pulse"
+    : "border-emerald-300/70 bg-emerald-900/80";
+
+  const limitedOverride = isLimited
+    ? "border-amber-400 bg-gradient-to-b from-amber-900/70 via-amber-800/40 to-slate-950 shadow-[0_0_25px_rgba(251,191,36,0.55)]"
+    : "";
 
   return (
     <button
       type="button"
       onClick={clickable ? onAssignChip : undefined}
-      className={`min-w-[90px] rounded-lg border px-2 py-2 text-center shadow-md flex flex-col items-center transition
-        ${
-          clickable
-            ? "border-violet-400 bg-emerald-900/80 ring-2 ring-violet-500/50 animate-pulse"
-            : "border-emerald-300/70 bg-emerald-900/80"
-        }`}
+      className={`min-w-[90px] rounded-lg border px-2 py-2 text-center shadow-md flex flex-col items-center transition ${baseClass} ${limitedOverride}`}
     >
-      <div className="mb-1 w-12 h-16 overflow-hidden rounded-[6px] border border-emerald-300/60 bg-slate-900/60">
+      <div
+        className={`mb-1 w-12 h-16 overflow-hidden rounded-[6px] border bg-slate-900/60 ${
+          isLimited
+            ? "border-amber-300 shadow-[0_0_18px_rgba(251,191,36,0.5)]"
+            : "border-emerald-300/60"
+        }`}
+      >
         <img
           src={artUrl}
           alt={monster.displayName}
@@ -1349,6 +1401,16 @@ function PitchCard({
       <div className="text-[9px] text-emerald-200">
         {monster.position} • {monster.club}
       </div>
+
+      {/* Limited edition info on pitch */}
+      {isLimited && (
+        <div className="mt-0.5 text-[9px] text-amber-300">
+          {monster.editionLabel || "Limited Edition"}
+          {typeof monster.serialNumber === "number" && (
+            <> • #{monster.serialNumber}</>
+          )}
+        </div>
+      )}
 
       {chip && (
         <div className="mt-1">
