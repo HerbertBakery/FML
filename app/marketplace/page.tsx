@@ -98,6 +98,7 @@ const rarityOrder: Record<string, number> = {
   RARE: 2,
   EPIC: 3,
   LEGENDARY: 4,
+  MYTHICAL: 5, // NEW: so mythical sorts correctly
 };
 
 function rarityScore(r: string | undefined | null): number {
@@ -253,7 +254,9 @@ export default function MarketplacePage() {
         }),
       });
 
-      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
 
       if (!res.ok) {
         const msg = data?.error || "Failed to list monster for sale.";
@@ -275,7 +278,9 @@ export default function MarketplacePage() {
     setActionMessage(null);
     setError(null);
 
-    const confirmBuy = window.confirm("Are you sure you want to buy this monster?");
+    const confirmBuy = window.confirm(
+      "Are you sure you want to buy this monster?"
+    );
     if (!confirmBuy) return;
 
     try {
@@ -288,7 +293,9 @@ export default function MarketplacePage() {
         body: JSON.stringify({ listingId }),
       });
 
-      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
 
       if (!res.ok) {
         const msg = data?.error || "Failed to complete purchase.";
@@ -382,7 +389,10 @@ export default function MarketplacePage() {
         case "price_high":
           return b.price - a.price;
         case "rarity_high":
-          return rarityScore(b.userMonster.rarity) - rarityScore(a.userMonster.rarity);
+          return (
+            rarityScore(b.userMonster.rarity) -
+            rarityScore(a.userMonster.rarity)
+          );
         case "oldest":
           return 0; // we'll reverse after sort
         case "newest":
@@ -407,6 +417,36 @@ export default function MarketplacePage() {
     sortBy,
   ]);
 
+  // ---------------------------
+  // Badge helper for editions
+  // ---------------------------
+  function renderRightBadge(m: UserMonsterDTO) {
+    const isLimited = m.editionType === "LIMITED";
+    const isUnique1of1 = isLimited && m.editionLabel === "1 of 1";
+
+    if (isUnique1of1) {
+      return (
+        <span className="uppercase text-[10px] font-semibold text-slate-100 bg-black/70 px-2 py-0.5 rounded-full border border-slate-300">
+          1 of 1 GRAIL
+        </span>
+      );
+    }
+
+    if (isLimited) {
+      return (
+        <span className="uppercase text-[10px] font-semibold text-amber-300 bg-black/60 px-2 py-0.5 rounded-full border border-amber-300/60">
+          LIMITED
+        </span>
+      );
+    }
+
+    return (
+      <span className="uppercase text-[10px] text-emerald-300">
+        {m.rarity}
+      </span>
+    );
+  }
+
   if (checkingUser) {
     return (
       <main className="space-y-6">
@@ -426,8 +466,8 @@ export default function MarketplacePage() {
             Log in or create an account to buy and sell monsters.
           </p>
           <p className="text-xs text-slate-400">
-            The marketplace lets you trade monsterized Premier League players using in-game
-            coins.
+            The marketplace lets you trade monsterized Premier League players
+            using in-game coins.
           </p>
           <div className="flex gap-3">
             <Link
@@ -456,7 +496,8 @@ export default function MarketplacePage() {
           <div>
             <h2 className="text-xl font-semibold mb-1">Monster Marketplace</h2>
             <p className="text-xs text-slate-400 mb-2">
-              Buy and sell monsterized Premier League players using in-game coins.
+              Buy and sell monsterized Premier League players using in-game
+              coins.
             </p>
             <p className="text-xs text-emerald-300">
               Balance:{" "}
@@ -481,7 +522,9 @@ export default function MarketplacePage() {
 
       {/* Filters + search */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-slate-100 mb-1">Search & filters</h3>
+        <h3 className="text-sm font-semibold text-slate-100 mb-1">
+          Search & filters
+        </h3>
         <div className="grid gap-3 sm:grid-cols-3">
           {/* Search */}
           <div className="sm:col-span-1">
@@ -622,14 +665,13 @@ export default function MarketplacePage() {
 
       {/* Listings */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-        <h3 className="font-semibold text-slate-100 mb-1">
-          Listings
-        </h3>
+        <h3 className="font-semibold text-slate-100 mb-1">Listings</h3>
         {loadingMarket ? (
           <p className="text-xs text-slate-400">Loading listings...</p>
         ) : filteredListings.length === 0 ? (
           <p className="text-xs text-slate-400">
-            No monsters match your filters. Try clearing some filters or check back later.
+            No monsters match your filters. Try clearing some filters or check
+            back later.
           </p>
         ) : (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -658,11 +700,7 @@ export default function MarketplacePage() {
                     editionLabel: m.editionLabel ?? undefined,
                     serialNumber: m.serialNumber ?? undefined,
                   }}
-                  rightBadge={
-                    <span className="uppercase text-[10px] text-emerald-300">
-                      {m.rarity}
-                    </span>
-                  }
+                  rightBadge={renderRightBadge(m)}
                 >
                   <p className="text-[11px] text-slate-200 mt-1">
                     Price:{" "}
@@ -710,9 +748,7 @@ export default function MarketplacePage() {
 
       {/* Your Monsters */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-        <h3 className="font-semibold text-slate-100 mb-1">
-          Your Monsters
-        </h3>
+        <h3 className="font-semibold text-slate-100 mb-1">Your Monsters</h3>
         {collection.length === 0 ? (
           <p className="text-xs text-slate-400">
             You don&apos;t own any monsters yet. Open your starter packs on the{" "}
@@ -745,6 +781,7 @@ export default function MarketplacePage() {
                     editionLabel: m.editionLabel ?? undefined,
                     serialNumber: m.serialNumber ?? undefined,
                   }}
+                  rightBadge={renderRightBadge(m)}
                 >
                   <div className="mt-2 flex flex-col gap-1">
                     <button

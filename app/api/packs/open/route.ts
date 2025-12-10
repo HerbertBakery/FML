@@ -12,10 +12,11 @@
 // - Pack-specific rarity odds for multi-rarity players (starter/bronze/silver/gold/mythical).
 // - Tiny chance per card to roll from the 8 Mythical monsters pool,
 //   which always have rarity "MYTHICAL" and custom art/stats.
+// - Limited editions per rarity: up to 10 "1 of 10" GOLDEN per templateCode+rarity.
+// - Unique editions per rarity: up to 1 "1 of 1" per templateCode+rarity (non-Mythical only).
 //
 // Still also:
-// - Handles limited editions via pack definition knobs, with a hard cap
-//   of 10 GOLDEN limited editions per base monster (numbered 1/10).
+// - Handles limited editions via pack definition knobs.
 // - Stores artBasePath + setCode on UserMonster.
 // - Updates objectives via the Season 1 sync helper.
 
@@ -187,13 +188,20 @@ function generateBaseStats(position: string, rarity: string) {
   };
 }
 
-// --- Limited editions ------------------------------------------------
+// --- Limited & unique editions --------------------------------------
 
 function maybeRollLimitedEdition(
   limitedEditionChance: number | undefined
 ): boolean {
   if (!limitedEditionChance || limitedEditionChance <= 0) return false;
   return Math.random() < limitedEditionChance;
+}
+
+function maybeRollUniqueEdition(
+  uniqueEditionChance: number | undefined
+): boolean {
+  if (!uniqueEditionChance || uniqueEditionChance <= 0) return false;
+  return Math.random() < uniqueEditionChance;
 }
 
 function buildBaseArtPath(player: RawPlayer): string {
@@ -380,10 +388,11 @@ export async function POST(req: NextRequest) {
       for (const p of chosen) {
         const isMythical = p.rarity === "MYTHICAL";
 
-        // Decide if this roll *wants* to be a limited edition
+        // Decide if this roll wants to be unique or limited (non-Mythical only)
+        const rolledUnique =
+          !isMythical && maybeRollUniqueEdition(def.uniqueEditionChance);
         const rolledLimited =
-          !isMythical &&
-          maybeRollLimitedEdition(def.limitedEditionChance);
+          !isMythical && maybeRollLimitedEdition(def.limitedEditionChance);
 
         // Default edition values
         let editionType: "BASE" | "THEMED" | "LIMITED" = "BASE";
@@ -396,12 +405,37 @@ export async function POST(req: NextRequest) {
         if (isMythical) {
           // Mythicals are their own thing, not "Limited"
           editionLabel = "Mythical";
-        } else if (rolledLimited) {
-          // Hard cap: at most 10 limited editions per templateCode
+        } else if (rolledUnique) {
+          // UNIQUE 1-of-1 per templateCode+rarity
+          const existingUniqueCount = await tx.userMonster.count({
+            where: {
+              templateCode: String(p.code),
+              editionType: "LIMITED",
+              rarity: p.rarity,
+              editionLabel: "1 of 1",
+            },
+          });
+
+          if (existingUniqueCount === 0) {
+            editionType = "LIMITED";
+            serialNumber = 1;
+            editionLabel = "1 of 1";
+          }
+          // If 1-of-1 already exists, we silently fall through:
+          // the rolledLimited flag can still give us a 1-of-10 below.
+        }
+
+        if (!isMythical && !editionLabel && rolledLimited) {
+          // GOLDEN 1-of-10 per templateCode+rarity
+          // Ignore the 1-of-1 when counting
           const existingLECount = await tx.userMonster.count({
             where: {
               templateCode: String(p.code),
               editionType: "LIMITED",
+              rarity: p.rarity,
+              NOT: {
+                editionLabel: "1 of 1",
+              },
             },
           });
 
@@ -448,7 +482,7 @@ export async function POST(req: NextRequest) {
               isMythical ? " [MYTHICAL]" : ""
             }${
               created.editionType === "LIMITED" && created.serialNumber
-                ? ` [Limited Edition #${created.serialNumber}/10]`
+                ? ` [Limited Edition ${created.editionLabel}]`
                 : ""
             }`,
           },

@@ -37,7 +37,7 @@ export type OpenedMonster = {
   // allow art from backend, same as marketplace DTO
   artBasePath?: string | null;
 
-  // NEW: edition info so limiteds show correctly in the pack open modal
+  // edition info so limiteds show correctly in the pack open modal
   editionType?: string | null;
   editionLabel?: string | null;
   serialNumber?: number | null;
@@ -171,7 +171,7 @@ const THEMES: Record<PackId, Theme> = {
     subText: "text-black/80",
     label: "Gold Pack",
   },
-  // NEW: Mythical theme — added only, nothing removed
+  // Mythical theme
   mythical: {
     frame: "border-4 border-fuchsia-400",
     bodyFrom: "from-fuchsia-200",
@@ -219,7 +219,6 @@ const rarityStyle: Record<
     glow: "shadow-amber-400/40",
     label: "bg-amber-500 text-black",
   },
-  // NEW optional style for Mythical rarity
   MYTHICAL: {
     ring: "ring-fuchsia-400",
     glow: "shadow-fuchsia-400/40",
@@ -253,9 +252,51 @@ const MonsterRevealCard: React.FC<{
   selected?: boolean;
   isDuplicate?: boolean;
 }> = ({ monster, delay = 0, selected = false, isDuplicate = false }) => {
-  const style = rarityStyle[rarityKey(monster.rarity)];
+  const baseStyle = rarityStyle[rarityKey(monster.rarity)];
   const artUrl = getArtUrlForMonster(monster);
   const isLimited = monster.editionType === "LIMITED";
+  const isUnique1of1 = isLimited && monster.editionLabel === "1 of 1";
+  const isGoldenLimited = isLimited && !isUnique1of1;
+
+  // Wrapper frame / glow overrides for limiteds
+  let ringClass = baseStyle.ring;
+  let glowClass = baseStyle.glow;
+  let cardBg =
+    "bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950";
+
+  if (isGoldenLimited) {
+    ringClass = "ring-amber-300";
+    glowClass = "shadow-[0_0_30px_rgba(251,191,36,0.55)]";
+    cardBg =
+      "bg-gradient-to-br from-amber-900/80 via-slate-950 to-amber-950";
+  }
+
+  if (isUnique1of1) {
+    ringClass = "ring-slate-100";
+    glowClass = "shadow-[0_0_32px_rgba(148,163,184,0.9)]";
+    cardBg =
+      "bg-gradient-to-br from-slate-950 via-slate-900 to-black";
+  }
+
+  // Top-right label classes & text
+  let rarityBadgeClass = baseStyle.label;
+  let rarityBadgeText = monster.rarity;
+
+  if (isGoldenLimited) {
+    rarityBadgeClass =
+      "bg-amber-400 text-black border border-amber-200 shadow-[0_0_14px_rgba(251,191,36,0.8)]";
+    rarityBadgeText = "LIMITED • GOLDEN";
+  }
+
+  if (isUnique1of1) {
+    rarityBadgeClass =
+      "bg-black/80 text-slate-100 border border-slate-300 shadow-[0_0_18px_rgba(148,163,184,0.9)]";
+    rarityBadgeText = "LIMITED • 1 of 1";
+  }
+
+  const limitedLabelClass = isUnique1of1
+    ? "text-slate-100"
+    : "text-yellow-300";
 
   return (
     <motion.div
@@ -267,9 +308,7 @@ const MonsterRevealCard: React.FC<{
         damping: 14,
         delay,
       }}
-      className={`relative w-60 sm:w-64 h-80 sm:h-96 rounded-2xl p-3 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 ring-2 ${
-        style.ring
-      } shadow-xl ${style.glow} ${
+      className={`relative w-60 sm:w-64 h-80 sm:h-96 rounded-2xl p-3 ${cardBg} ring-2 ${ringClass} shadow-xl ${glowClass} ${
         selected ? "ring-4 ring-emerald-400 shadow-emerald-400/60" : ""
       }`}
       style={{
@@ -277,9 +316,9 @@ const MonsterRevealCard: React.FC<{
       }}
     >
       <div
-        className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-xs font-semibold ${style.label}`}
+        className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-xs font-semibold ${rarityBadgeClass}`}
       >
-        {monster.rarity}
+        {rarityBadgeText}
       </div>
       <div className="absolute top-3 left-3 text-[10px] tracking-wide uppercase bg-black/40 text-white px-2 py-0.5 rounded">
         {monster.position} • {monster.club}
@@ -319,9 +358,11 @@ const MonsterRevealCard: React.FC<{
             Evo Lv. {monster.evolutionLevel}
           </div>
 
-          {/* NEW: Limited edition label inside the pack-open card */}
+          {/* Limited edition label inside the pack-open card */}
           {isLimited && (
-            <div className="mt-2 text-[10px] font-semibold text-yellow-300">
+            <div
+              className={`mt-2 text-[10px] font-semibold ${limitedLabelClass}`}
+            >
               {monster.editionLabel || "Limited Edition"}
             </div>
           )}
@@ -377,7 +418,9 @@ const PackVisual: React.FC<{
           <h2 className={`text-2xl font-extrabold drop-shadow-lg ${theme.brandText}`}>
             FANTASY MONSTER
           </h2>
-          <p className={`mt-1 text-xs font-semibold uppercase tracking-wide ${theme.subText}`}>
+          <p
+            className={`mt-1 text-xs font-semibold uppercase tracking-wide ${theme.subText}`}
+          >
             {theme.label}
           </p>
         </div>

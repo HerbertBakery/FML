@@ -15,9 +15,13 @@ export type PackDefinition = {
   // MonsterTemplate.setCode values when building the pack pools.
   featuredSetCodes?: string[];
 
-  // Chance [0–1] that a card in this pack is a LIMITED edition
-  // (e.g. 0.05 = 5% per card roll, handled in the pack-opening logic).
+  // Chance [0–1] that a card in this pack is a LIMITED 1-of-10 edition
+  // (handled in the pack-opening logic).
   limitedEditionChance?: number;
+
+  // Chance [0–1] that a card in this pack is a UNIQUE 1-of-1 edition
+  // (handled in the pack-opening logic, only for non-MYTHICAL cards).
+  uniqueEditionChance?: number;
 
   // Chance [0–1] that a card in this pack rolls from the Mythical pool
   // instead of the normal JSON players.
@@ -35,6 +39,7 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
     rarityBias: "normal",
     featuredSetCodes: ["BASE"],
     limitedEditionChance: 0,
+    uniqueEditionChance: 0,
     mythicalChancePerCard: 0, // no Mythicals in free packs
   },
   {
@@ -46,7 +51,10 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
     size: 4,
     rarityBias: "normal",
     featuredSetCodes: ["BASE"],
-    limitedEditionChance: 0.005, // 0.5% chance per card
+    // 0.2% per card for 1-of-10
+    limitedEditionChance: 0.002,
+    // 0.01% per card for 1-of-1
+    uniqueEditionChance: 0.0001,
     mythicalChancePerCard: 0.001, // 0.1% chance per card
   },
   {
@@ -58,8 +66,11 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
     size: 5,
     rarityBias: "premium",
     featuredSetCodes: ["BASE"],
-    limitedEditionChance: 0.01, // 1% per card
-    mythicalChancePerCard: 0.002, // 0.2% per card
+    // 0.5% per card for 1-of-10
+    limitedEditionChance: 0.005,
+    // 0.02% per card for 1-of-1
+    uniqueEditionChance: 0.0002,
+    mythicalChancePerCard: 0.002, // 0.2% chance per card
   },
   {
     id: "gold",
@@ -70,8 +81,11 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
     size: 6,
     rarityBias: "premium",
     featuredSetCodes: ["BASE"], // later you can add "CHRISTMAS_TERRORS_2025"
-    limitedEditionChance: 0.03, // 3% per card
-    mythicalChancePerCard: 0.004, // 0.4% per card
+    // 1% per card for 1-of-10
+    limitedEditionChance: 0.01,
+    // 0.05% per card for 1-of-1
+    uniqueEditionChance: 0.0005,
+    mythicalChancePerCard: 0.004, // 0.4% chance per card
   },
   {
     id: "mythical",
@@ -82,9 +96,11 @@ export const PACK_DEFINITIONS: PackDefinition[] = [
     size: 4, // premium, focused pack
     rarityBias: "premium",
     featuredSetCodes: ["BASE", "MYTHICAL"],
-    // Focus this pack on Mythicals rather than GOLDEN bases
-    limitedEditionChance: 0,
-    // 🔥 5% Mythical chance per card
+    // Mythical pack still focuses on Mythicals; limiteds only apply to non-MYTHICAL cards
+    // pulled from the normal pool.
+    limitedEditionChance: 0.02, // 2% per card for 1-of-10
+    uniqueEditionChance: 0.001, // 0.1% per card for 1-of-1
+    // 5% Mythical chance per card
     mythicalChancePerCard: 0.05,
   },
 ];

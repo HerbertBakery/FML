@@ -5,6 +5,13 @@
 // - Marks the RewardPack as opened (isOpened = true).
 // - Logs packOpen + creates UserMonsters same as normal pack.
 // - Records objectives progress (OPEN_PACKS_ANY).
+//
+// Limited editions:
+// - Uses the pack definition's limitedEditionChance.
+// - Hard cap of 10 LIMITED editions per templateCode *per rarity* (1 of 10, 2 of 10, ...).
+// Unique editions:
+// - Uses the pack definition's uniqueEditionChance.
+// - Hard cap of 1 UNIQUE (1 of 1) per templateCode *per rarity*.
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -41,7 +48,7 @@ const ALL_PLAYERS: RawPlayer[] = (rawTeams as RawTeam[]).flatMap(
   (team) => team.players || []
 );
 
-// ---- Tiering / rarity helpers (same as normal packs) ----
+// ---- Tiering / rarity helpers (same as normal reward packs) ----
 const ELITE_KEYWORDS = [
   "haaland",
   "salah",
@@ -199,6 +206,11 @@ function maybeRollLimitedEdition(chance: number | undefined): boolean {
   return Math.random() < chance;
 }
 
+function maybeRollUniqueEdition(chance: number | undefined): boolean {
+  if (!chance || chance <= 0) return false;
+  return Math.random() < chance;
+}
+
 function buildBaseArtPath(player: RawPlayer): string {
   return `/cards/base/${player.code}.png`;
 }
@@ -312,10 +324,53 @@ export async function POST(req: NextRequest) {
       const createdMonsters = [];
 
       for (const p of chosen) {
-        const isLimited = maybeRollLimitedEdition(def.limitedEditionChance);
+        const rolledUnique = maybeRollUniqueEdition(def.uniqueEditionChance);
+        const rolledLimited = maybeRollLimitedEdition(def.limitedEditionChance);
+
+        let editionType: "BASE" | "THEMED" | "LIMITED" = "BASE";
+        let serialNumber: number | null = null;
+        let editionLabel: string | null = null;
         const setCode = "BASE";
-        const editionType = isLimited ? "LIMITED" : "BASE";
-        const editionLabel = isLimited ? "Limited Edition" : null;
+
+        if (rolledUnique) {
+          // UNIQUE 1-of-1 per templateCode+rarity
+          const existingUniqueCount = await tx.userMonster.count({
+            where: {
+              templateCode: String(p.code),
+              editionType: "LIMITED",
+              rarity: p.rarity,
+              editionLabel: "1 of 1",
+            },
+          });
+
+          if (existingUniqueCount === 0) {
+            editionType = "LIMITED";
+            serialNumber = 1;
+            editionLabel = "1 of 1";
+          }
+          // If 1-of-1 already exists, we fall through to the 1-of-10 logic.
+        }
+
+        if (!editionLabel && rolledLimited) {
+          // GOLDEN 1-of-10 per templateCode+rarity (ignoring the 1-of-1)
+          const existingLECount = await tx.userMonster.count({
+            where: {
+              templateCode: String(p.code),
+              editionType: "LIMITED",
+              rarity: p.rarity,
+              NOT: {
+                editionLabel: "1 of 1",
+              },
+            },
+          });
+
+          if (existingLECount < 10) {
+            editionType = "LIMITED";
+            serialNumber = existingLECount + 1;
+            editionLabel = `${serialNumber} of 10`;
+          }
+        }
+
         const artBasePath = buildBaseArtPath(p);
 
         const created = await tx.userMonster.create({
@@ -333,6 +388,7 @@ export async function POST(req: NextRequest) {
             setCode,
             editionType,
             editionLabel: editionLabel ?? undefined,
+            serialNumber: serialNumber ?? undefined,
             artBasePath,
           },
         });
@@ -342,7 +398,11 @@ export async function POST(req: NextRequest) {
             userMonsterId: created.id,
             actorUserId: user.id,
             action: "CREATED",
-            description: `Reward pack: ${def.name} (${def.id})`,
+            description: `Reward pack: ${def.name} (${def.id})${
+              created.editionType === "LIMITED" && created.editionLabel
+                ? ` [Limited Edition ${created.editionLabel}]`
+                : ""
+            }`,
           },
         });
 

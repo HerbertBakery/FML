@@ -1204,8 +1204,14 @@ export default function SquadPage() {
                           getArtUrlForMonster(monster);
                         const chip =
                           monsterChipMap[monster.id];
+
                         const isLimited =
                           monster.editionType === "LIMITED";
+                        const isUnique1of1 =
+                          isLimited &&
+                          monster.editionLabel === "1 of 1";
+                        const isGoldenLimited =
+                          isLimited && !isUnique1of1;
 
                         const handleCardClick = () => {
                           if (chipMode && selectedChipInfo) {
@@ -1235,12 +1241,30 @@ export default function SquadPage() {
                             "border-slate-700 bg-slate-950/60 hover:border-emerald-400";
                         }
 
-                        // Override styling if this is a limited-edition card
-                        if (isLimited) {
+                        // Limited-edition overrides
+                        if (isGoldenLimited) {
                           stateClass = selected
                             ? "border-amber-400 bg-gradient-to-b from-amber-900/70 via-amber-800/40 to-slate-950 shadow-[0_0_25px_rgba(251,191,36,0.5)]"
                             : "border-amber-300 bg-gradient-to-b from-amber-900/60 via-slate-950 to-amber-950 hover:border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]";
                         }
+
+                        if (isUnique1of1) {
+                          stateClass = selected
+                            ? "border-slate-200 bg-gradient-to-b from-slate-950 via-slate-900 to-black shadow-[0_0_30px_rgba(148,163,184,0.9)]"
+                            : "border-slate-400 bg-gradient-to-b from-slate-950 via-slate-900 to-black hover:border-slate-200 shadow-[0_0_24px_rgba(148,163,184,0.65)]";
+                        }
+
+                        const rarityLabelClass = isUnique1of1
+                          ? "text-slate-100"
+                          : isGoldenLimited
+                          ? "text-amber-300"
+                          : "text-emerald-300";
+
+                        const rarityLabelText = isUnique1of1
+                          ? "LIMITED • 1 of 1"
+                          : isGoldenLimited
+                          ? "LIMITED • GOLDEN"
+                          : monster.rarity;
 
                         return (
                           <div
@@ -1250,8 +1274,12 @@ export default function SquadPage() {
                           >
                             <div
                               className={`mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4] ${
-                                isLimited
+                                isGoldenLimited
                                   ? "ring-1 ring-amber-400/70 shadow-[0_0_30px_rgba(251,191,36,0.45)]"
+                                  : ""
+                              } ${
+                                isUnique1of1
+                                  ? "ring-1 ring-slate-200/80 shadow-[0_0_30px_rgba(148,163,184,0.85)] bg-black/60"
                                   : ""
                               }`}
                             >
@@ -1271,19 +1299,21 @@ export default function SquadPage() {
                                 {monster.displayName}
                               </span>
                               <span
-                                className={`text-[10px] uppercase ${
-                                  isLimited
-                                    ? "text-amber-300 font-semibold"
-                                    : "text-emerald-300"
-                                }`}
+                                className={`text-[10px] uppercase font-semibold ${rarityLabelClass}`}
                               >
-                                {monster.rarity}
+                                {rarityLabelText}
                               </span>
                             </div>
 
                             {/* Limited edition label / serial – no extra # duplication */}
                             {isLimited && (
-                              <p className="text-[10px] text-amber-300 mb-1">
+                              <p
+                                className={`text-[10px] mb-1 ${
+                                  isUnique1of1
+                                    ? "text-slate-100"
+                                    : "text-amber-300"
+                                }`}
+                              >
                                 {monster.editionLabel ??
                                   (typeof monster.serialNumber === "number"
                                     ? `#${monster.serialNumber}`
@@ -1363,26 +1393,48 @@ function PitchCard({
 }) {
   const artUrl = getArtUrlForMonster(monster);
   const clickable = assignMode && !!onAssignChip;
+
   const isLimited = monster.editionType === "LIMITED";
+  const isUnique1of1 =
+    isLimited && monster.editionLabel === "1 of 1";
+  const isGoldenLimited = isLimited && !isUnique1of1;
 
   const baseClass = clickable
     ? "border-violet-400 bg-emerald-900/80 ring-2 ring-violet-500/50 animate-pulse"
     : "border-emerald-300/70 bg-emerald-900/80";
 
-  const limitedOverride = isLimited
+  const goldenOverride = isGoldenLimited
     ? "border-amber-400 bg-gradient-to-b from-amber-900/70 via-amber-800/40 to-slate-950 shadow-[0_0_25px_rgba(251,191,36,0.55)]"
     : "";
+
+  const uniqueOverride = isUnique1of1
+    ? "border-slate-200 bg-gradient-to-b from-slate-950 via-slate-900 to-black shadow-[0_0_30px_rgba(148,163,184,0.9)]"
+    : "";
+
+  const rarityLineClass = isUnique1of1
+    ? "text-slate-100"
+    : isGoldenLimited
+    ? "text-amber-300"
+    : "text-emerald-200";
+
+  const rarityLineText = isUnique1of1
+    ? "LIMITED • 1 of 1"
+    : isGoldenLimited
+    ? "LIMITED • GOLDEN"
+    : `${monster.position} • ${monster.club}`;
 
   return (
     <button
       type="button"
       onClick={clickable ? onAssignChip : undefined}
-      className={`min-w-[90px] rounded-lg border px-2 py-2 text-center shadow-md flex flex-col items-center transition ${baseClass} ${limitedOverride}`}
+      className={`min-w-[90px] rounded-lg border px-2 py-2 text-center shadow-md flex flex-col items-center transition ${baseClass} ${goldenOverride} ${uniqueOverride}`}
     >
       <div
         className={`mb-1 w-12 h-16 overflow-hidden rounded-[6px] border bg-slate-900/60 ${
-          isLimited
+          isGoldenLimited
             ? "border-amber-300 shadow-[0_0_18px_rgba(251,191,36,0.5)]"
+            : isUnique1of1
+            ? "border-slate-200 shadow-[0_0_20px_rgba(148,163,184,0.8)] bg-black/70"
             : "border-emerald-300/60"
         }`}
       >
@@ -1395,13 +1447,19 @@ function PitchCard({
       <div className="text-[11px] font-semibold text-emerald-50 truncate max-w-[90px]">
         {monster.displayName}
       </div>
-      <div className="text-[9px] text-emerald-200">
-        {monster.position} • {monster.club}
+
+      {/* Position / rarity line */}
+      <div className={`text-[9px] ${rarityLineClass}`}>
+        {rarityLineText}
       </div>
 
       {/* Limited edition info on pitch – no extra # duplication */}
       {isLimited && (
-        <div className="mt-0.5 text-[9px] text-amber-300">
+        <div
+          className={`mt-0.5 text-[9px] ${
+            isUnique1of1 ? "text-slate-100" : "text-amber-300"
+          }`}
+        >
           {monster.editionLabel ??
             (typeof monster.serialNumber === "number"
               ? `#${monster.serialNumber}`

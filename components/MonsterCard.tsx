@@ -23,7 +23,7 @@ export type MonsterCardMonster = {
   setCode?: string;
   editionType?: string; // "BASE" | "THEMED" | "LIMITED"
   serialNumber?: number; // 1–N for limiteds
-  editionLabel?: string; // e.g. "1 of 10"
+  editionLabel?: string; // e.g. "1 of 10", "1 of 1"
 };
 
 export type ActiveChipInfo = {
@@ -85,7 +85,11 @@ export default function MonsterCard({
   activeChip,
 }: MonsterCardProps) {
   const isLimited = monster.editionType === "LIMITED";
+  const isUnique1of1 = isLimited && monster.editionLabel === "1 of 1";
+  const isGoldenLimited = isLimited && !isUnique1of1;
+
   const { border, background, badge } = getRarityClasses(monster.rarity);
+
   const hasArt = !!monster.artUrl;
 
   // ---------- Edition text ----------
@@ -93,13 +97,10 @@ export default function MonsterCard({
 
   if (isLimited) {
     if (monster.editionLabel) {
-      // Start from the raw label
       let cleaned = monster.editionLabel;
 
-      // 1) Strip common " • #1" / " · #1" / " - #1" / " #1" endings
+      // Strip things like " • #1" / " - #1" etc if they ever appear
       cleaned = cleaned.replace(/\s*[•·-]?\s*#\d+\s*$/u, "");
-
-      // 2) EXTRA SAFETY: if any "#" is still present, chop everything from "#" onwards
       const hashIndex = cleaned.indexOf("#");
       if (hashIndex !== -1) {
         cleaned = cleaned.slice(0, hashIndex);
@@ -107,11 +108,9 @@ export default function MonsterCard({
 
       editionText = cleaned.trim();
     } else {
-      // No label? Just say Limited Edition (no serial)
       editionText = "Limited Edition";
     }
   } else {
-    // Non-limited: same behaviour as before
     editionText =
       monster.editionLabel ??
       (typeof monster.serialNumber === "number"
@@ -127,17 +126,34 @@ export default function MonsterCard({
     img.src = monster.hoverArtUrl;
   }, [monster.hoverArtUrl]);
 
+  // Rarity label styling
+  const rarityLabelClass = isUnique1of1
+    ? "text-slate-100"
+    : isGoldenLimited
+    ? "text-yellow-300"
+    : badge;
+
+  const rarityLabelText = isUnique1of1
+    ? "LIMITED • 1 of 1"
+    : isGoldenLimited
+    ? "LIMITED • GOLDEN"
+    : monster.rarity;
+
   return (
     <div
-      className={`group rounded-xl border ${border} ${background} p-3 text-xs flex flex-col h-full gap-2 overflow-hidden
+      className={`group rounded-xl border ${border} ${background} p-3 text-xs flex flex-col justify-between gap-2 overflow-hidden
         ${
-          isLimited
+          isGoldenLimited
             ? "border-yellow-400 shadow-[0_0_24px_rgba(250,204,21,0.45)] relative before:absolute before:inset-x-0 before:top-0 before:h-10 before:bg-gradient-to-b before:from-yellow-400/15 before:to-transparent"
+            : ""
+        }
+        ${
+          isUnique1of1
+            ? "border-slate-200 shadow-[0_0_30px_rgba(148,163,184,0.9)] bg-gradient-to-b from-slate-950 via-slate-900 to-black relative before:absolute before:inset-x-0 before:top-0 before:h-10 before:bg-gradient-to-b before:from-slate-200/18 before:to-transparent"
             : ""
         }`}
     >
-      {/* TOP FLEX AREA: art, name, rarity, player info, evo, edition */}
-      <div className="flex-1">
+      <div>
         {/* ART AREA */}
         {hasArt && (
           <div className="mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4]">
@@ -146,10 +162,16 @@ export default function MonsterCard({
               {monster.position}
             </div>
 
-            {/* Limited edition tag on art */}
-            {isLimited && (
+            {/* Limited edition tags on art */}
+            {isGoldenLimited && (
               <div className="absolute top-1 right-1 z-10 rounded-md bg-yellow-400/90 px-2 py-0.5 text-[9px] font-bold uppercase text-slate-950 shadow">
                 GOLDEN
+              </div>
+            )}
+
+            {isUnique1of1 && (
+              <div className="absolute top-1 right-1 z-10 rounded-md bg-slate-900/95 px-2 py-0.5 text-[9px] font-bold uppercase text-slate-100 border border-slate-300 shadow">
+                1&nbsp;OF&nbsp;1
               </div>
             )}
 
@@ -171,7 +193,7 @@ export default function MonsterCard({
           </div>
         )}
 
-        {/* NAME + RARITY / CHIP */}
+        {/* NAME + RARITY/CHIP */}
         <div className="mb-1">
           <span className="font-semibold block">{monster.displayName}</span>
 
@@ -190,11 +212,9 @@ export default function MonsterCard({
                 <span className="text-[10px]">{rightBadge}</span>
               ) : (
                 <span
-                  className={`text-[10px] uppercase font-semibold ${
-                    isLimited ? "text-yellow-300" : badge
-                  }`}
+                  className={`text-[10px] uppercase font-semibold ${rarityLabelClass}`}
                 >
-                  {isLimited ? "LIMITED • GOLDEN" : monster.rarity}
+                  {rarityLabelText}
                 </span>
               )}
             </div>
@@ -213,11 +233,31 @@ export default function MonsterCard({
           </p>
         )}
 
-        {/* Edition line (still part of top area) */}
+        {/* COMBAT STATS: ATTACK / DEFENCE */}
+        <div className="mt-2 grid grid-cols-2 gap-1 text-[10px] text-slate-200">
+          <div className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1">
+            <span className="font-semibold text-emerald-300">ATK</span>
+            <span className="font-mono font-semibold">
+              {monster.baseAttack}
+            </span>
+          </div>
+          <div className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1">
+            <span className="font-semibold text-red-300">DEF</span>
+            <span className="font-mono font-semibold">
+              {monster.baseDefense}
+            </span>
+          </div>
+        </div>
+
+        {/* Edition line */}
         {editionText && (
           <p
             className={`text-[10px] mt-1 ${
-              isLimited ? "text-yellow-300 font-semibold" : "text-amber-300"
+              isUnique1of1
+                ? "text-slate-100 font-semibold"
+                : isGoldenLimited
+                ? "text-yellow-300 font-semibold"
+                : "text-amber-300"
             }`}
           >
             {editionText}
@@ -225,26 +265,8 @@ export default function MonsterCard({
         )}
       </div>
 
-      {/* FIXED STATS ROW: sits above buttons consistently */}
-      <div className="mt-1 grid grid-cols-2 gap-1 text-[10px] text-slate-200">
-        <div className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1">
-          <span className="font-semibold text-emerald-300">ATK</span>
-          <span className="font-mono font-semibold">
-            {monster.baseAttack}
-          </span>
-        </div>
-        <div className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1">
-          <span className="font-semibold text-red-300">DEF</span>
-          <span className="font-mono font-semibold">
-            {monster.baseDefense}
-          </span>
-        </div>
-      </div>
-
-      {/* CHILDREN (e.g. marketplace buttons) */}
       {children && <div className="mt-1">{children}</div>}
 
-      {/* Optional "View details" link */}
       {detailHref && (
         <div className="mt-1 flex justify-end">
           <Link
