@@ -55,6 +55,7 @@ type BattleMonsterCard = {
   // additional status
   bypassDefendersOnce?: boolean;
   stunnedForTurns?: number;
+  hasBall?: boolean; // ⚽ new: does this monster currently have the ball?
 
   // Visual info
   displayName?: string;
@@ -118,6 +119,7 @@ type BattleState = {
   turn: number;
   winner: PlayerKey | "DRAW" | null;
   log: string[];
+  ballAtCenter: boolean; // ⚽ new: true if ball is in the middle of the pitch
 };
 
 // ---- PvP queue types ----
@@ -141,6 +143,9 @@ const OUTFIELD_REQUIRED = 10;
 // Hero power: 3 mana → draw 2 cards
 const HERO_POWER_COST = 3;
 const HERO_POWER_DRAW = 2;
+
+// Passing: 1 mana
+const PASS_MANA_COST = 1;
 
 // ---- Small helpers ----
 
@@ -196,6 +201,13 @@ function ratingForMonster(m: UserMonsterDTO): number {
   );
 }
 
+function anyCardHasBall(state: BattleState): boolean {
+  return (
+    state.player.board.some((m) => m.hasBall) ||
+    state.opponent.board.some((m) => m.hasBall)
+  );
+}
+
 // ---- Build battle cards from your monsters ----
 
 function buildMonsterCard(m: UserMonsterDTO): BattleMonsterCard {
@@ -245,6 +257,7 @@ function buildMonsterCard(m: UserMonsterDTO): BattleMonsterCard {
     hasSummoningSickness: true,
     canAttack: false,
     stunnedForTurns: 0,
+    hasBall: false, // default, ball starts in center
 
     displayName: m.displayName,
     realPlayerName: m.realPlayerName,
@@ -581,6 +594,7 @@ function findDefenderIndices(board: BattleMonsterCard[]): number[] {
 }
 
 // *** Simplified + safer attack logic ***
+// ⚽ updated to include ball transfer rules
 function applyAttack(
   state: BattleState,
   attackerOwner: PlayerKey,
@@ -607,10 +621,23 @@ function applyAttack(
   let newDefenderHero = { ...defenderPlayer.hero };
   const log = [...state.log];
 
+  let nextBallAtCenter = state.ballAtCenter;
+
   const defenderIndices = findDefenderIndices(defenderPlayer.board);
   const hasDefenders = defenderIndices.length > 0;
 
   if (targetType === "HERO") {
+    // Only the monster with the ball can shoot the Goalkeeper
+    if (!attacker.hasBall) {
+      log.push(
+        `${attackerPlayer.label}'s ${attacker.name} tried to shoot the Goalkeeper but does not have the ball.`
+      );
+      return {
+        ...state,
+        log,
+      };
+    }
+
     // If defenders are in play, you CANNOT hit the Goalkeeper.
     if (hasDefenders) {
       log.push(
@@ -638,12 +665,50 @@ function applyAttack(
       `${attackerPlayer.label}'s ${attacker.name} hit ${defenderPlayer.label}'s GK for ${attacker.attack} damage`
     );
 
-    // Midfielder attacking the Goalkeeper deals damage but is killed.
+    // Midfielder attacking the Goalkeeper deals damage but is killed,
+    // and if they had the ball it goes to a random monster on the defender's team.
     if (attacker.position === "MID") {
+      const midfielderHadBall = !!attacker.hasBall;
+
       log.push(
         `${attackerPlayer.label}'s ${attacker.name} is a Midfielder and is removed from play after the shot.`
       );
+
+      // Remove the MID from the attacker board
       newAttackerBoard.splice(attackerIndex, 1);
+
+      if (midfielderHadBall) {
+        // Try to give the ball to a random monster on the defending side first
+        if (newDefenderBoard.length > 0) {
+          const randIdx = Math.floor(Math.random() * newDefenderBoard.length);
+          newDefenderBoard = newDefenderBoard.map((m, idx) => ({
+            ...m,
+            hasBall: idx === randIdx,
+          }));
+          newAttackerBoard = newAttackerBoard.map((m) => ({
+            ...m,
+            hasBall: false,
+          }));
+          log.push(
+            `${defenderPlayer.label}'s ${newDefenderBoard[randIdx].name} collects the rebound and gains the ball.`
+          );
+          nextBallAtCenter = false;
+        } else if (newAttackerBoard.length > 0) {
+          // If the defending side has no monsters, let a random teammate recover it
+          const randIdx = Math.floor(Math.random() * newAttackerBoard.length);
+          newAttackerBoard = newAttackerBoard.map((m, idx) => ({
+            ...m,
+            hasBall: idx === randIdx,
+          }));
+          log.push(
+            `${attackerPlayer.label}'s ${newAttackerBoard[randIdx].name} recovers the loose ball.`
+          );
+          nextBallAtCenter = false;
+        } else {
+          // Absolute edge case: no monsters on the pitch at all
+          nextBallAtCenter = true;
+        }
+      }
     } else if (attacker.bypassDefendersOnce) {
       attacker = {
         ...attacker,
@@ -690,19 +755,150 @@ function applyAttack(
       `${attackerPlayer.label}'s ${attacker.name} traded with ${defenderPlayer.label}'s ${target.name}`
     );
 
-    if (newTarget.health <= 0) {
+    const attackerHadBall = !!attacker.hasBall;
+    const targetHadBall = !!target.hasBall;
+
+    const attackerDies = newAttacker.health <= 0;
+    const targetDies = newTarget.health <= 0;
+
+    // Apply health/death to boards
+    if (targetDies) {
       newDefenderBoard.splice(targetIndex, 1);
     } else {
-      newDefenderBoard[targetIndex] = newTarget;
+      newDefenderBoard[targetIndex] = {
+        ...newTarget,
+      };
     }
 
-    if (newAttacker.health <= 0) {
+    if (attackerDies) {
       newAttackerBoard.splice(attackerIndex, 1);
-      attacker = newAttacker;
     } else {
       newAttacker.canAttack = false;
-      newAttackerBoard[attackerIndex] = newAttacker;
+      newAttackerBoard[attackerIndex] = {
+        ...newAttacker,
+      };
       attacker = newAttacker;
+    }
+
+    // ⚽ Ball transfer logic for minion combat
+    if (targetHadBall) {
+      if (attackerDies && !targetDies) {
+        // Target survives and had the ball: keep it
+        if (!targetDies && newDefenderBoard[targetIndex]) {
+          const updated = newDefenderBoard[targetIndex];
+          newDefenderBoard[targetIndex] = { ...updated, hasBall: true };
+        }
+        newAttackerBoard = newAttackerBoard.map((c) => ({
+          ...c,
+          hasBall: false,
+        }));
+        nextBallAtCenter = false;
+      } else if (!attackerDies && targetDies) {
+        // Attacker survives, gains the ball
+        const updatedIndex = newAttackerBoard.findIndex(
+          (c) => c.id === attacker.id
+        );
+        if (updatedIndex >= 0) {
+          newAttackerBoard = newAttackerBoard.map((c, idx) => ({
+            ...c,
+            hasBall: idx === updatedIndex,
+          }));
+          newDefenderBoard = newDefenderBoard.map((c) => ({
+            ...c,
+            hasBall: false,
+          }));
+        }
+        nextBallAtCenter = false;
+      } else if (attackerDies && targetDies) {
+        // Both die: ball goes to a random surviving monster on target's team,
+        // otherwise to a random monster on attacker's team, otherwise center.
+        const defenderCount = newDefenderBoard.length;
+        const attackerCount = newAttackerBoard.length;
+        if (defenderCount > 0) {
+          const randIdx = Math.floor(Math.random() * defenderCount);
+          newDefenderBoard = newDefenderBoard.map((c, idx) => ({
+            ...c,
+            hasBall: idx === randIdx,
+          }));
+          newAttackerBoard = newAttackerBoard.map((c) => ({
+            ...c,
+            hasBall: false,
+          }));
+          nextBallAtCenter = false;
+        } else if (attackerCount > 0) {
+          const randIdx = Math.floor(Math.random() * attackerCount);
+          newAttackerBoard = newAttackerBoard.map((c, idx) => ({
+            ...c,
+            hasBall: idx === randIdx,
+          }));
+          newDefenderBoard = newDefenderBoard.map((c) => ({
+            ...c,
+            hasBall: false,
+          }));
+          nextBallAtCenter = false;
+        } else {
+          nextBallAtCenter = true;
+        }
+      }
+    } else if (attackerHadBall) {
+      if (attackerDies && !targetDies) {
+        // Attacker dies, target survives: target takes the ball
+        if (!targetDies && newDefenderBoard[targetIndex]) {
+          const updated = newDefenderBoard[targetIndex];
+          newDefenderBoard[targetIndex] = { ...updated, hasBall: true };
+        }
+        newAttackerBoard = newAttackerBoard.map((c) => ({
+          ...c,
+          hasBall: false,
+        }));
+        nextBallAtCenter = false;
+      } else if (!attackerDies) {
+        // Attacker survives, keeps the ball
+        const updatedIndex = newAttackerBoard.findIndex(
+          (c) => c.id === attacker.id
+        );
+        if (updatedIndex >= 0) {
+          newAttackerBoard = newAttackerBoard.map((c, idx) => ({
+            ...c,
+            hasBall: idx === updatedIndex,
+          }));
+          newDefenderBoard = newDefenderBoard.map((c) => ({
+            ...c,
+            hasBall: false,
+          }));
+        }
+        nextBallAtCenter = false;
+      } else if (attackerDies && targetDies) {
+        // Both die: ball goes to a random surviving monster on attacker's team,
+        // otherwise to a random monster on defender's team, otherwise center.
+        const attackerCount = newAttackerBoard.length;
+        const defenderCount = newDefenderBoard.length;
+        if (attackerCount > 0) {
+          const randIdx = Math.floor(Math.random() * attackerCount);
+          newAttackerBoard = newAttackerBoard.map((c, idx) => ({
+            ...c,
+            hasBall: idx === randIdx,
+          }));
+          newDefenderBoard = newDefenderBoard.map((c) => ({
+            ...c,
+            hasBall: false,
+          }));
+          nextBallAtCenter = false;
+        } else if (defenderCount > 0) {
+          const randIdx = Math.floor(Math.random() * defenderCount);
+          newDefenderBoard = newDefenderBoard.map((c, idx) => ({
+            ...c,
+            hasBall: idx === randIdx,
+          }));
+          newAttackerBoard = newAttackerBoard.map((c) => ({
+            ...c,
+            hasBall: false,
+          }));
+          nextBallAtCenter = false;
+        } else {
+          nextBallAtCenter = true;
+        }
+      }
     }
   }
 
@@ -740,6 +936,7 @@ function applyAttack(
         ? updatedDefenderPlayer
         : updatedAttackerPlayer,
     log,
+    ballAtCenter: nextBallAtCenter,
   };
 
   if (next.player.hero.hp <= 0 && next.opponent.hero.hp <= 0) {
@@ -751,6 +948,38 @@ function applyAttack(
   }
 
   return next;
+}
+
+// ⚽ Helper to give the ball to a specific monster by id + owner
+function giveBallToMonster(
+  state: BattleState,
+  owner: PlayerKey,
+  monsterId: string,
+  logMessage?: string
+): BattleState {
+  const log = logMessage ? [...state.log, logMessage] : state.log;
+
+  const newPlayerBoard =
+    owner === "player"
+      ? state.player.board.map((m) =>
+          m.id === monsterId ? { ...m, hasBall: true } : { ...m, hasBall: false }
+        )
+      : state.player.board.map((m) => ({ ...m, hasBall: false }));
+
+  const newOpponentBoard =
+    owner === "opponent"
+      ? state.opponent.board.map((m) =>
+          m.id === monsterId ? { ...m, hasBall: true } : { ...m, hasBall: false }
+        )
+      : state.opponent.board.map((m) => ({ ...m, hasBall: false }));
+
+  return {
+    ...state,
+    player: { ...state.player, board: newPlayerBoard },
+    opponent: { ...state.opponent, board: newOpponentBoard },
+    ballAtCenter: false,
+    log,
+  };
 }
 
 function playCardFromHand(
@@ -797,21 +1026,35 @@ function playCardFromHand(
   let newOther: PlayerState = { ...other };
   newActing.hand = newActing.hand.filter((_, idx) => idx !== handIndex);
   newActing.mana -= card.manaCost;
-  const log = [...state.log];
+  let log = [...state.log];
+  let nextBallAtCenter = state.ballAtCenter;
 
   if (card.kind === "MONSTER") {
     const hasSummoningSickness = !card.keywords.includes("RUSH");
     const canAttack =
       card.position !== "DEF" && card.keywords.includes("RUSH");
 
+    // First monster to hit the pitch gets the ball if it's still in the center
+    const isFirstToBall =
+      state.ballAtCenter && !anyCardHasBall(state) && newActing.board.length === 0;
+
     const monster: BattleMonsterCard = {
       ...card,
       hasSummoningSickness,
       canAttack,
       stunnedForTurns: 0,
+      hasBall: isFirstToBall,
     };
     newActing.board = [...newActing.board, monster];
-    log.push(`${acting.label} played ${monster.name} (${monster.position})`);
+
+    if (isFirstToBall) {
+      nextBallAtCenter = false;
+      log.push(
+        `${acting.label}'s ${monster.name} takes first touch and gains the ball.`
+      );
+    } else {
+      log.push(`${acting.label} played ${monster.name} (${monster.position})`);
+    }
   } else if (card.kind === "SPELL") {
     switch (card.effect) {
       case "DAMAGE_HERO": {
@@ -916,12 +1159,14 @@ function playCardFromHand(
             player: newActing,
             opponent: newOther,
             log,
+            ballAtCenter: state.ballAtCenter,
           }
         : {
             ...state,
             opponent: newActing,
             player: newOther,
             log,
+            ballAtCenter: state.ballAtCenter,
           };
 
     if (
@@ -944,12 +1189,14 @@ function playCardFromHand(
         player: newActing,
         opponent: newOther,
         log,
+        ballAtCenter: nextBallAtCenter,
       }
     : {
         ...state,
         opponent: newActing,
         player: newOther,
         log,
+        ballAtCenter: nextBallAtCenter,
       };
 }
 
@@ -979,7 +1226,7 @@ function useHeroPower(state: BattleState, playerKey: PlayerKey): BattleState {
     : { ...state, opponent: newActing, player: other, log };
 }
 
-// ---- AI TURN: fixed to avoid infinite loop ----
+// ---- AI TURN: fixed to avoid infinite loop + ⚽ aware ----
 function runOpponentTurn(state: BattleState): BattleState {
   if (state.winner) return state;
 
@@ -1036,16 +1283,42 @@ function runOpponentTurn(state: BattleState): BattleState {
   if (s.winner) return s;
 
   // Simple AI:
-  // If you have defenders on the enemy board, hit them.
-  // Otherwise, go face.
+  // - If defenders on your side, clear them.
+  // - Otherwise, if you have the ball, shoot GK.
+  // - If you don't have the ball but player does, tackle their ball-holder.
+  // - Else, trade into any minion.
   s.opponent.board.forEach((m, idx) => {
     if (!m.canAttack) return;
 
     const defenderIndices = findDefenderIndices(s.player.board);
+    const playerBallIdx = s.player.board.findIndex((bm) => bm.hasBall);
+    const thisHasBall = !!m.hasBall;
+
     if (defenderIndices.length > 0) {
       const targetIdx = defenderIndices[0];
       s = applyAttack(s, "opponent", idx, "MINION", targetIdx);
-    } else {
+      return;
+    }
+
+    if (!thisHasBall && playerBallIdx >= 0) {
+      // Try to tackle the ball-holder
+      s = applyAttack(s, "opponent", idx, "MINION", playerBallIdx);
+      return;
+    }
+
+    if (thisHasBall && s.player.board.length === 0) {
+      // Clean shot on GK
+      s = applyAttack(s, "opponent", idx, "HERO");
+      return;
+    }
+
+    if (s.player.board.length > 0) {
+      // Trade into first minion if nothing else
+      s = applyAttack(s, "opponent", idx, "MINION", 0);
+      return;
+    }
+
+    if (thisHasBall) {
       s = applyAttack(s, "opponent", idx, "HERO");
     }
   });
@@ -1111,6 +1384,7 @@ function createBattleFromBase(
     turn: 1,
     winner: null,
     log: ["Battle started. Player 1's turn."],
+    ballAtCenter: true, // ⚽ ball starts in the center of the pitch
   };
 
   // Initial 3-card deal each
@@ -1456,25 +1730,90 @@ function BattleMatchInner() {
     );
   };
 
-  const handleSelectAttacker = (idx: number) => {
+  // ⚽ Handle clicking *your own* monsters: select attacker OR pass the ball
+  const handlePlayerBoardClick = (idx: number) => {
     if (!battle) return;
     if (battle.winner) return;
     if (battle.active !== "player") {
       setActionMessage("It is not your turn.");
       return;
     }
-    const m = battle.player.board[idx];
-       if (!m) return;
-    if (!m.canAttack) {
-      setActionMessage("This monster can’t attack right now.");
+
+    const card = battle.player.board[idx];
+    if (!card) return;
+
+    // No selection yet: select this monster (attacker or potential passer)
+    if (selectedAttacker === null) {
+      setActionMessage(null);
+      setSelectedAttacker(idx);
       return;
     }
-    if (m.position === "DEF") {
-      setActionMessage("Defenders block but cannot attack.");
+
+    // Clicking the same monster toggles selection off
+    if (idx === selectedAttacker) {
+      setSelectedAttacker(null);
+      setActionMessage(null);
       return;
     }
+
+    const source = battle.player.board[selectedAttacker];
+    if (!source) {
+      setSelectedAttacker(null);
+      setActionMessage("That monster is no longer on the pitch.");
+      return;
+    }
+
+    // If source does NOT have the ball, just switch selected attacker/passer
+    if (!source.hasBall) {
+      setSelectedAttacker(idx);
+      setActionMessage(null);
+      return;
+    }
+
+    // Source has the ball → attempt a PASS to idx
+    if (battle.player.mana < PASS_MANA_COST) {
+      setActionMessage(
+        `Not enough mana to pass. Passing costs ${PASS_MANA_COST} mana.`
+      );
+      return;
+    }
+
+    setBattle((prev) => {
+      if (!prev) return prev;
+      if (prev.winner || prev.active !== "player") return prev;
+
+      const currentSource = prev.player.board[selectedAttacker];
+      const currentTarget = prev.player.board[idx];
+      if (!currentSource || !currentTarget) return prev;
+      if (!currentSource.hasBall) return prev;
+
+      const newPlayer = { ...prev.player };
+      newPlayer.mana = Math.max(0, newPlayer.mana - PASS_MANA_COST);
+      newPlayer.board = newPlayer.board.map((m, i) => {
+        if (i === selectedAttacker) return { ...m, hasBall: false };
+        if (i === idx) return { ...m, hasBall: true };
+        return { ...m, hasBall: false };
+      });
+
+      const newLog = [
+        ...prev.log,
+        `${prev.player.label}'s ${currentSource.name} passed the ball to ${currentTarget.name}.`,
+      ];
+
+      return {
+        ...prev,
+        player: newPlayer,
+        opponent: {
+          ...prev.opponent,
+          board: prev.opponent.board.map((m) => ({ ...m, hasBall: false })),
+        },
+        ballAtCenter: false,
+        log: newLog,
+      };
+    });
+
+    setSelectedAttacker(idx);
     setActionMessage(null);
-    setSelectedAttacker(idx === selectedAttacker ? null : idx);
   };
 
   const handleAttackHero = () => {
@@ -1497,6 +1836,12 @@ function BattleMatchInner() {
     }
     if (!attacker.canAttack || attacker.position === "DEF") {
       setActionMessage("This monster can’t attack right now.");
+      return;
+    }
+    if (!attacker.hasBall) {
+      setActionMessage(
+        "Only the monster with the ball can shoot at the Goalkeeper."
+      );
       return;
     }
 
@@ -1626,7 +1971,7 @@ function BattleMatchInner() {
   if (loading) {
     return (
       <main className="space-y-4">
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
           <p className="text-sm text-slate-200">Loading battle mode…</p>
         </section>
       </main>
@@ -2198,6 +2543,13 @@ function BattleMatchInner() {
           <div className="pointer-events-none absolute inset-x-10 top-6 h-16 rounded-[999px] border border-emerald-500/40" />
           <div className="pointer-events-none absolute inset-x-10 bottom-6 h-16 rounded-[999px] border border-emerald-500/40" />
 
+          {/* ⚽ Ball in the center when free */}
+          {battle!.ballAtCenter && (
+            <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-emerald-300/80 bg-slate-950/80 text-xs">
+              ⚽
+            </div>
+          )}
+
           <div className="relative flex flex-col gap-6">
             {/* Opponent GK (click to shoot) */}
             <button
@@ -2260,7 +2612,7 @@ function BattleMatchInner() {
                     card={m}
                     owner="player"
                     isSelected={selectedAttacker === idx}
-                    onClick={() => handleSelectAttacker(idx)}
+                    onClick={() => handlePlayerBoardClick(idx)}
                     showStatusOverlay
                   />
                 ))
@@ -2438,6 +2790,13 @@ function BattleMonsterCardView(props: {
           </span>
         </div>
 
+        {/* ⚽ Ball marker: centered on the card */}
+        {card.hasBall && (
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-emerald-300/80 bg-slate-900/95 px-2 py-1 text-[13px] shadow-lg">
+            ⚽
+          </div>
+        )}
+
         {/* Keywords */}
         <div className="absolute right-1 top-1 flex flex-col items-end gap-0.5">
           {card.keywords.map((kw) => (
@@ -2484,24 +2843,27 @@ function BattleMonsterCardView(props: {
 
         {/* Status overlay */}
         {showStatusOverlay && (!canAttackNow || isStunned) && (
-          <div className="pointer-events-none absolute inset-0 flex items-end justify-center rounded-2xl bg-slate-950/35 pb-1">
-            {isStunned ? (
-              <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-amber-100">
-                Stunned
-              </span>
-            ) : card.hasSummoningSickness ? (
-              <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-emerald-100">
-                Summoning sickness
-              </span>
-            ) : card.position !== "DEF" ? (
-              <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-slate-100">
-                Used
-              </span>
-            ) : (
-              <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-sky-100">
-                Wall
-              </span>
-            )}
+          <div className="pointer-events-none absolute inset-0 rounded-2xl bg-slate-950/35">
+            {/* Bottom status pill for states */}
+            <div className="absolute inset-x-0 bottom-1 flex justify-center">
+              {isStunned ? (
+                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-amber-100">
+                  Stunned
+                </span>
+              ) : card.hasSummoningSickness ? (
+                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-emerald-100">
+                  Rest
+                </span>
+              ) : card.position !== "DEF" ? (
+                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-slate-100">
+                  Used
+                </span>
+              ) : (
+                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-sky-100">
+                  Wall
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>

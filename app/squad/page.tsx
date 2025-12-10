@@ -24,6 +24,8 @@ type UserMonsterDTO = {
   baseMagic: number;
   baseDefense: number;
   evolutionLevel: number;
+  pendingEvolutionLevel?: number | null;
+
   artBasePath?: string | null;
   setCode?: string | null;
   editionType?: string | null;
@@ -1190,7 +1192,7 @@ export default function SquadPage() {
                     <h3 className="text-sm font-semibold mb-2">
                       {labelMap[pos]} ({monsters.length})
                     </h3>
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
                       {monsters.map((monster) => {
                         const selected = selectedIds.includes(
                           monster.id
@@ -1244,7 +1246,7 @@ export default function SquadPage() {
                           <div
                             key={monster.id}
                             onClick={handleCardClick}
-                            className={`text-left rounded-xl border p-3 text-xs transition ${cursorClass} ${stateClass}`}
+                            className={`text-left rounded-xl border p-3 text-xs transition flex flex-col h-full ${cursorClass} ${stateClass}`}
                           >
                             <div
                               className={`mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4] ${
@@ -1279,18 +1281,13 @@ export default function SquadPage() {
                               </span>
                             </div>
 
-                            {/* Limited edition label + serial */}
+                            {/* Limited edition label / serial – no extra # duplication */}
                             {isLimited && (
                               <p className="text-[10px] text-amber-300 mb-1">
-                                {monster.editionLabel || "Limited Edition"}
-                                {typeof monster.serialNumber ===
-                                  "number" && (
-                                  <>
-                                    {" "}
-                                    • #
-                                    {monster.serialNumber}
-                                  </>
-                                )}
+                                {monster.editionLabel ??
+                                  (typeof monster.serialNumber === "number"
+                                    ? `#${monster.serialNumber}`
+                                    : "Limited Edition")}
                               </p>
                             )}
 
@@ -1309,12 +1306,12 @@ export default function SquadPage() {
                               {monster.realPlayerName} •{" "}
                               {monster.club}
                             </p>
+
+                            {/* Position only – ATK/MAG/DEF removed for squad view */}
                             <p className="text-[11px] text-slate-400 mt-1">
-                              {monster.position} • ATK{" "}
-                              {monster.baseAttack} • MAG{" "}
-                              {monster.baseMagic} • DEF{" "}
-                              {monster.baseDefense}
+                              {monster.position}
                             </p>
+
                             <p className="text-[10px] text-emerald-300 mt-1">
                               Evo Lv. {monster.evolutionLevel}
                             </p>
@@ -1327,7 +1324,7 @@ export default function SquadPage() {
                                   monster.id
                                 );
                               }}
-                              className="mt-2 inline-flex items-center rounded-full border border-slate-600 px-2 py-1 text-[10px] text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+                              className="mt-auto inline-flex items-center rounded-full border border-slate-600 px-2 py-1 text-[10px] text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
                             >
                               View details
                             </button>
@@ -1402,13 +1399,13 @@ function PitchCard({
         {monster.position} • {monster.club}
       </div>
 
-      {/* Limited edition info on pitch */}
+      {/* Limited edition info on pitch – no extra # duplication */}
       {isLimited && (
         <div className="mt-0.5 text-[9px] text-amber-300">
-          {monster.editionLabel || "Limited Edition"}
-          {typeof monster.serialNumber === "number" && (
-            <> • #{monster.serialNumber}</>
-          )}
+          {monster.editionLabel ??
+            (typeof monster.serialNumber === "number"
+              ? `#${monster.serialNumber}`
+              : "Limited Edition")}
         </div>
       )}
 

@@ -22,7 +22,7 @@ export type MonsterCardMonster = {
 
   setCode?: string;
   editionType?: string; // "BASE" | "THEMED" | "LIMITED"
-  serialNumber?: number; // 1–10 for limiteds
+  serialNumber?: number; // 1–N for limiteds
   editionLabel?: string; // e.g. "1 of 10"
 };
 
@@ -89,14 +89,36 @@ export default function MonsterCard({
 
   const hasArt = !!monster.artUrl;
 
-  const editionText = isLimited
-    ? typeof monster.serialNumber === "number"
-      ? `Limited Edition #${monster.serialNumber} / 10`
-      : monster.editionLabel ?? "Limited Edition"
-    : monster.editionLabel ??
+  // ---------- Edition text ----------
+  let editionText: string | undefined;
+
+  if (isLimited) {
+    if (monster.editionLabel) {
+      // Start from the raw label
+      let cleaned = monster.editionLabel;
+
+      // 1) Strip common " • #1" / " · #1" / " - #1" / " #1" endings
+      cleaned = cleaned.replace(/\s*[•·-]?\s*#\d+\s*$/u, "");
+
+      // 2) EXTRA SAFETY: if any "#" is still present, chop everything from "#" onwards
+      const hashIndex = cleaned.indexOf("#");
+      if (hashIndex !== -1) {
+        cleaned = cleaned.slice(0, hashIndex);
+      }
+
+      editionText = cleaned.trim();
+    } else {
+      // No label? Just say Limited Edition (no serial)
+      editionText = "Limited Edition";
+    }
+  } else {
+    // Non-limited: same behaviour as before
+    editionText =
+      monster.editionLabel ??
       (typeof monster.serialNumber === "number"
         ? `Serial #${monster.serialNumber}`
         : undefined);
+  }
 
   // Preload hover art
   useEffect(() => {
