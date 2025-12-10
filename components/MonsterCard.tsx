@@ -86,7 +86,6 @@ export default function MonsterCard({
 }: MonsterCardProps) {
   const isLimited = monster.editionType === "LIMITED";
   const { border, background, badge } = getRarityClasses(monster.rarity);
-
   const hasArt = !!monster.artUrl;
 
   // ---------- Edition text ----------
@@ -130,14 +129,15 @@ export default function MonsterCard({
 
   return (
     <div
-      className={`group rounded-xl border ${border} ${background} p-3 text-xs flex flex-col justify-between gap-2 overflow-hidden
+      className={`group rounded-xl border ${border} ${background} p-3 text-xs flex flex-col h-full gap-2 overflow-hidden
         ${
           isLimited
             ? "border-yellow-400 shadow-[0_0_24px_rgba(250,204,21,0.45)] relative before:absolute before:inset-x-0 before:top-0 before:h-10 before:bg-gradient-to-b before:from-yellow-400/15 before:to-transparent"
             : ""
         }`}
     >
-      <div>
+      {/* TOP FLEX AREA: art, name, rarity, player info, evo, edition */}
+      <div className="flex-1">
         {/* ART AREA */}
         {hasArt && (
           <div className="mb-2 relative w-full overflow-hidden rounded-lg aspect-[3/4]">
@@ -171,7 +171,7 @@ export default function MonsterCard({
           </div>
         )}
 
-        {/* NAME + RARITY/CHIP */}
+        {/* NAME + RARITY / CHIP */}
         <div className="mb-1">
           <span className="font-semibold block">{monster.displayName}</span>
 
@@ -213,23 +213,7 @@ export default function MonsterCard({
           </p>
         )}
 
-        {/* COMBAT STATS: ATTACK / DEFENCE */}
-        <div className="mt-2 grid grid-cols-2 gap-1 text-[10px] text-slate-200">
-          <div className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1">
-            <span className="font-semibold text-emerald-300">ATK</span>
-            <span className="font-mono font-semibold">
-              {monster.baseAttack}
-            </span>
-          </div>
-          <div className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1">
-            <span className="font-semibold text-red-300">DEF</span>
-            <span className="font-mono font-semibold">
-              {monster.baseDefense}
-            </span>
-          </div>
-        </div>
-
-        {/* Edition line */}
+        {/* Edition line (still part of top area) */}
         {editionText && (
           <p
             className={`text-[10px] mt-1 ${
@@ -241,8 +225,26 @@ export default function MonsterCard({
         )}
       </div>
 
+      {/* FIXED STATS ROW: sits above buttons consistently */}
+      <div className="mt-1 grid grid-cols-2 gap-1 text-[10px] text-slate-200">
+        <div className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1">
+          <span className="font-semibold text-emerald-300">ATK</span>
+          <span className="font-mono font-semibold">
+            {monster.baseAttack}
+          </span>
+        </div>
+        <div className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1">
+          <span className="font-semibold text-red-300">DEF</span>
+          <span className="font-mono font-semibold">
+            {monster.baseDefense}
+          </span>
+        </div>
+      </div>
+
+      {/* CHILDREN (e.g. marketplace buttons) */}
       {children && <div className="mt-1">{children}</div>}
 
+      {/* Optional "View details" link */}
       {detailHref && (
         <div className="mt-1 flex justify-end">
           <Link
