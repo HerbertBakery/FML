@@ -36,6 +36,11 @@ export type OpenedMonster = {
 
   // allow art from backend, same as marketplace DTO
   artBasePath?: string | null;
+
+  // NEW: edition info so limiteds show correctly in the pack open modal
+  editionType?: string | null;
+  editionLabel?: string | null;
+  serialNumber?: number | null;
 };
 
 type PackOpenResponse = {
@@ -250,6 +255,7 @@ const MonsterRevealCard: React.FC<{
 }> = ({ monster, delay = 0, selected = false, isDuplicate = false }) => {
   const style = rarityStyle[rarityKey(monster.rarity)];
   const artUrl = getArtUrlForMonster(monster);
+  const isLimited = monster.editionType === "LIMITED";
 
   return (
     <motion.div
@@ -312,6 +318,14 @@ const MonsterRevealCard: React.FC<{
           <div className="mt-2 text-[10px] text-emerald-300">
             Evo Lv. {monster.evolutionLevel}
           </div>
+
+          {/* NEW: Limited edition label inside the pack-open card */}
+          {isLimited && (
+            <div className="mt-2 text-[10px] font-semibold text-yellow-300">
+              {monster.editionLabel || "Limited Edition"}
+            </div>
+          )}
+
           {isDuplicate && (
             <div className="mt-2 text-[10px] text-amber-300 font-semibold">
               Duplicate – cannot be added to squad
