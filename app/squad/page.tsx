@@ -170,6 +170,24 @@ function chipStatusLabel(chip: MeChipDTO): string {
   return `Available · ${tries} tries left`;
 }
 
+// Rarity pill styles for pitch view – mirrors MonsterCard rarity styling
+function getRarityPillClasses(rarityRaw: string | undefined): string {
+  const rarity = (rarityRaw || "").toLowerCase().trim();
+
+  switch (rarity) {
+    case "common":
+      return "bg-slate-900/80 text-slate-200 border border-slate-600";
+    case "rare":
+      return "bg-sky-900/70 text-sky-200 border border-sky-400/70";
+    case "epic":
+      return "bg-purple-900/70 text-purple-200 border border-purple-400/70";
+    case "legendary":
+      return "bg-amber-900/70 text-amber-200 border border-amber-400/70";
+    default:
+      return "bg-slate-900/80 text-emerald-200 border border-emerald-400/70";
+  }
+}
+
 export default function SquadPage() {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
@@ -484,9 +502,7 @@ export default function SquadPage() {
   const hasGwHistoryFlag = gwHistory.length > 0 && gwIndex !== null;
 
   const viewingLatestGw =
-    hasGwHistoryFlag &&
-    gwIndex !== null &&
-    gwIndex === gwHistory.length - 1;
+    hasGwHistoryFlag && gwIndex !== null && gwIndex === gwHistory.length - 1;
 
   const hasLockedGwSquad =
     gwSquad && gwSquad.monsters && gwSquad.monsters.length > 0;
@@ -522,8 +538,7 @@ export default function SquadPage() {
     return { GK: gk, DEF: def, MID: mid, FWD: fwd };
   }, [pitchSource]);
 
-  const selectedChipInfo =
-    chips.find((c) => c.id === selectedChipId) ?? null;
+  const selectedChipInfo = chips.find((c) => c.id === selectedChipId) ?? null;
 
   const chipMode = !!selectedChipInfo;
 
@@ -533,8 +548,7 @@ export default function SquadPage() {
   // ---- Usable chips for sidebar (only chips you can actually assign) ----
   const usableChips = useMemo(() => {
     return chips.filter((chip) => {
-      const hasTries =
-        !chip.isConsumed && (chip.remainingTries ?? 0) > 0;
+      const hasTries = !chip.isConsumed && (chip.remainingTries ?? 0) > 0;
       if (!hasTries) return false;
 
       const hasActiveAssignment = chip.assignments.some(
@@ -613,7 +627,8 @@ export default function SquadPage() {
         credentials: "include",
       });
       if (reload.ok) {
-        const rData: MeChipsResponse = (await reload.json()) as MeChipsResponse;
+        const rData: MeChipsResponse =
+          (await reload.json()) as MeChipsResponse;
         const list = rData.chips ?? [];
         setChips(list);
         setMonsterChipMap(buildMonsterChipMapFromChips(list));
@@ -677,17 +692,17 @@ export default function SquadPage() {
             Build your 7-monster matchday squad
           </h2>
           <p className="text-xs text-slate-400 mb-2">
-            Pick exactly 7 monsters: you must have exactly 1 Goalkeeper plus at least 1
-            Defender, 1 Midfielder, and 1 Forward. All 7 monsters can score points for
-            your fantasy total this gameweek.
+            Pick exactly 7 monsters: you must have exactly 1 Goalkeeper plus at
+            least 1 Defender, 1 Midfielder, and 1 Forward. All 7 monsters can
+            score points for your fantasy total this gameweek.
           </p>
           <p className="text-xs text-slate-400 mb-1">
             Signed in as <span className="font-mono">{user.email}</span>
           </p>
           {chipMode && (
             <p className="text-[11px] text-emerald-300 mt-1">
-              Chip mode active: click a monster on your pitch or in your collection to
-              attach{" "}
+              Chip mode active: click a monster on your pitch or in your
+              collection to attach{" "}
               <span className="font-semibold">
                 {selectedChipInfo?.template.name}
               </span>{" "}
@@ -730,27 +745,27 @@ export default function SquadPage() {
                     <div className="flex flex-wrap gap-3 text-[11px]">
                       <span>
                         GK:{" "}
-                        <span className="font-semibold text-emerald-200">
-                          {counts.GK}
-                        </span>
+                          <span className="font-semibold text-emerald-200">
+                            {counts.GK}
+                          </span>
                       </span>
                       <span>
                         DEF:{" "}
-                        <span className="font-semibold text-emerald-200">
-                          {counts.DEF}
-                        </span>
+                          <span className="font-semibold text-emerald-200">
+                            {counts.DEF}
+                          </span>
                       </span>
                       <span>
                         MID:{" "}
-                        <span className="font-semibold text-emerald-200">
-                          {counts.MID}
-                        </span>
+                          <span className="font-semibold text-emerald-200">
+                            {counts.MID}
+                          </span>
                       </span>
                       <span>
                         FWD:{" "}
-                        <span className="font-semibold text-emerald-200">
-                          {counts.FWD}
-                        </span>
+                          <span className="font-semibold text-emerald-200">
+                            {counts.FWD}
+                          </span>
                       </span>
                     </div>
                   </div>
@@ -770,9 +785,7 @@ export default function SquadPage() {
                         : "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
                     }`}
                   >
-                    {saving
-                      ? "Saving..."
-                      : "Save Squad for Current Gameweek"}
+                    {saving ? "Saving..." : "Save Squad for Current Gameweek"}
                   </button>
                 </section>
 
@@ -804,9 +817,7 @@ export default function SquadPage() {
                         </p>
                       )}
                       {gwError && (
-                        <p className="text-[11px] text-red-300">
-                          {gwError}
-                        </p>
+                        <p className="text-[11px] text-red-300">{gwError}</p>
                       )}
                     </div>
 
@@ -954,8 +965,8 @@ export default function SquadPage() {
 
                   {!pitchSource.length && (
                     <p className="mt-3 text-[11px] text-emerald-200">
-                      Select monsters from your collection below to see
-                      them appear on the pitch.
+                      Select monsters from your collection below to see them
+                      appear on the pitch.
                     </p>
                   )}
                 </section>
@@ -970,18 +981,17 @@ export default function SquadPage() {
                         Evolution chips
                       </h3>
                       <p className="text-[11px] text-slate-300">
-                        Pick a chip, then click a monster on your pitch or
-                        in your collection to arm it for this upcoming
-                        gameweek.
+                        Pick a chip, then click a monster on your pitch or in
+                        your collection to arm it for this upcoming gameweek.
                       </p>
                     </div>
                   </div>
 
                   {usableChips.length === 0 ? (
                     <p className="text-[11px] text-slate-400 border border-slate-700/70 bg-slate-950/60 rounded-md px-3 py-2">
-                      You don&apos;t have any usable chips right now. Earn
-                      more from packs, SBCs or objectives, or wait for
-                      existing chips to resolve.
+                      You don&apos;t have any usable chips right now. Earn more
+                      from packs, SBCs or objectives, or wait for existing chips
+                      to resolve.
                     </p>
                   ) : (
                     <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
@@ -1074,9 +1084,8 @@ export default function SquadPage() {
                 Search & filters
               </h3>
               <p className="text-[11px] text-slate-400 mb-1">
-                Filter your collection while picking your 7-monster squad.
-                In chip mode, click any monster card to attach your
-                selected chip.
+                Filter your collection while picking your 7-monster squad. In
+                chip mode, click any monster card to attach your selected chip.
               </p>
 
               <div className="grid gap-3 sm:grid-cols-3">
@@ -1100,9 +1109,7 @@ export default function SquadPage() {
                     </label>
                     <select
                       value={filterRarity}
-                      onChange={(e) =>
-                        setFilterRarity(e.target.value)
-                      }
+                      onChange={(e) => setFilterRarity(e.target.value)}
                       className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
                     >
                       <option value="ALL">All</option>
@@ -1119,9 +1126,7 @@ export default function SquadPage() {
                     </label>
                     <select
                       value={filterPosition}
-                      onChange={(e) =>
-                        setFilterPosition(e.target.value)
-                      }
+                      onChange={(e) => setFilterPosition(e.target.value)}
                       className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
                     >
                       <option value="ALL">All</option>
@@ -1140,9 +1145,7 @@ export default function SquadPage() {
                     </label>
                     <select
                       value={filterClub}
-                      onChange={(e) =>
-                        setFilterClub(e.target.value)
-                      }
+                      onChange={(e) => setFilterClub(e.target.value)}
                       className="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
                     >
                       <option value="ALL">All</option>
@@ -1194,30 +1197,22 @@ export default function SquadPage() {
                     </h3>
                     <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
                       {monsters.map((monster) => {
-                        const selected = selectedIds.includes(
-                          monster.id
-                        );
+                        const selected = selectedIds.includes(monster.id);
                         const disabled =
-                          !selected &&
-                          selectedIds.length >= maxPlayers;
-                        const artUrl =
-                          getArtUrlForMonster(monster);
-                        const chip =
-                          monsterChipMap[monster.id];
+                          !selected && selectedIds.length >= maxPlayers;
+                        const artUrl = getArtUrlForMonster(monster);
+                        const chip = monsterChipMap[monster.id];
 
                         const isLimited =
                           monster.editionType === "LIMITED";
                         const isUnique1of1 =
-                          isLimited &&
-                          monster.editionLabel === "1 of 1";
+                          isLimited && monster.editionLabel === "1 of 1";
                         const isGoldenLimited =
                           isLimited && !isUnique1of1;
 
                         const handleCardClick = () => {
                           if (chipMode && selectedChipInfo) {
-                            void handleAssignChipToMonster(
-                              monster.id
-                            );
+                            void handleAssignChipToMonster(monster.id);
                           } else if (!disabled) {
                             toggleSelect(monster.id);
                           }
@@ -1333,8 +1328,7 @@ export default function SquadPage() {
                             )}
 
                             <p className="text-[11px] text-slate-300">
-                              {monster.realPlayerName} •{" "}
-                              {monster.club}
+                              {monster.realPlayerName} • {monster.club}
                             </p>
 
                             {/* Position only – ATK/MAG/DEF removed for squad view */}
@@ -1350,9 +1344,7 @@ export default function SquadPage() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setDetailMonsterId(
-                                  monster.id
-                                );
+                                setDetailMonsterId(monster.id);
                               }}
                               className="mt-auto inline-flex items-center rounded-full border border-slate-600 px-2 py-1 text-[10px] text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
                             >
@@ -1423,6 +1415,8 @@ function PitchCard({
     ? "LIMITED • GOLDEN"
     : `${monster.position} • ${monster.club}`;
 
+  const rarityPillClass = getRarityPillClasses(monster.rarity);
+
   return (
     <button
       type="button"
@@ -1448,8 +1442,15 @@ function PitchCard({
         {monster.displayName}
       </div>
 
+      {/* Rarity pill (matches MonsterCard vibe) */}
+      <div
+        className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[9px] uppercase font-semibold tracking-wide ${rarityPillClass}`}
+      >
+        {monster.rarity}
+      </div>
+
       {/* Position / rarity line */}
-      <div className={`text-[9px] ${rarityLineClass}`}>
+      <div className={`mt-0.5 text-[9px] ${rarityLineClass}`}>
         {rarityLineText}
       </div>
 

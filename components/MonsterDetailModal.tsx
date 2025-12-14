@@ -39,6 +39,12 @@ type ApiChipAssignment = {
   };
 };
 
+type ApiGameweekPoints = {
+  gameweekNumber: number;
+  name: string | null;
+  points: number;
+};
+
 type ApiMonster = {
   id: string;
   templateCode: string;
@@ -75,11 +81,20 @@ type ApiMonster = {
 
   // 🔥 NEW: chip assignments from the API
   chipAssignments?: ApiChipAssignment[];
+
+  // 🔥 NEW: per-gameweek fantasy points
+  gameweekPoints?: ApiGameweekPoints[];
 };
 
 type DetailApiResponse = {
   monster?: ApiMonster;
   error?: string;
+};
+
+type GameweekPointsRow = {
+  gameweekNumber: number;
+  name?: string | null;
+  points: number;
 };
 
 type MonsterDetail = {
@@ -104,6 +119,9 @@ type MonsterDetail = {
   ownerUsername?: string | null;
 
   artBasePath?: string | null;
+
+  // 🔥 NEW: per-gameweek fantasy points
+  gameweekPoints?: GameweekPointsRow[];
 };
 
 type HistoryEvent = {
@@ -136,7 +154,7 @@ type MonsterDetailModalProps = {
   monsterId: string;
   onClose: () => void;
 
-  // NEW: optional gameweek context when opened from a GW view
+  // optional gameweek context when opened from a GW view
   gameweekNumber?: number;
   gameweekPoints?: number;
 };
@@ -164,12 +182,12 @@ export default function MonsterDetailModal({
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // NEW: chip assignments
+  // chip assignments
   const [chipAssignments, setChipAssignments] = useState<ChipAssignment[]>(
     []
   );
 
-  // NEW: market price history
+  // market price history
   const [priceHistory, setPriceHistory] = useState<PriceHistoryEvent[]>(
     []
   );
@@ -240,6 +258,12 @@ export default function MonsterDetailModal({
             ownerEmail: apiMonster.owner?.email ?? null,
             ownerUsername: apiMonster.owner?.username ?? null,
             artBasePath: apiMonster.artBasePath ?? null,
+            gameweekPoints:
+              apiMonster.gameweekPoints?.map((gw) => ({
+                gameweekNumber: gw.gameweekNumber,
+                name: gw.name,
+                points: gw.points,
+              })) ?? [],
           });
 
           // Map API history (with actor) -> modal history
@@ -254,7 +278,7 @@ export default function MonsterDetailModal({
             }))
           );
 
-          // 🔥 Map chip assignments
+          // chip assignments
           setChipAssignments(
             (apiMonster.chipAssignments || []).map((a) => ({
               id: a.id,
@@ -282,14 +306,14 @@ export default function MonsterDetailModal({
       }
     }
 
-    load();
+    void load();
 
     return () => {
       cancelled = true;
     };
   }, [monsterId]);
 
-  // NEW: fetch market price history once we know the monster templateCode
+  // fetch market price history once we know the monster templateCode
   useEffect(() => {
     if (!monster?.templateCode) return;
 
@@ -334,7 +358,7 @@ export default function MonsterDetailModal({
       }
     }
 
-    loadHistory();
+    void loadHistory();
 
     return () => {
       cancelled = true;
@@ -359,7 +383,7 @@ export default function MonsterDetailModal({
         )
       : null;
 
-  // 🔥 Active chip = first unresolved assignment
+  // Active chip = first unresolved assignment
   const activeChip = chipAssignments.find((c) => c.resolvedAt === null);
 
   return (
@@ -437,7 +461,7 @@ export default function MonsterDetailModal({
                       Evo Lv. {monster.evolutionLevel}
                     </p>
 
-                    {/* NEW: actual gameweek score when we know it */}
+                    {/* Actual gameweek score when modal was opened from a GW view */}
                     {typeof gameweekPoints === "number" &&
                       typeof gameweekNumber === "number" && (
                         <p className="mt-1 text-[11px] text-emerald-300">
@@ -481,7 +505,7 @@ export default function MonsterDetailModal({
                       </p>
                     )}
 
-                    {/* 🔥 Active chip display */}
+                    {/* Active chip display */}
                     {activeChip && (
                       <div className="mt-2 space-y-1">
                         <p className="text-[11px] text-slate-300">
@@ -490,13 +514,64 @@ export default function MonsterDetailModal({
                         <MonsterChipBadge
                           name={activeChip.chipName}
                           code={activeChip.chipCode}
-                          gameweekNumber={activeChip.gameweekNumber}
+                          gameweekNumber={activeChip.gameweekNumber ?? undefined}
                         />
                         <p className="text-[11px] text-slate-400 mt-1">
                           Condition: {activeChip.chipDescription}
                         </p>
                       </div>
                     )}
+
+                    {/* 🔥 Per-gameweek fantasy points */}
+                    {monster.gameweekPoints &&
+                      monster.gameweekPoints.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-[11px] font-semibold text-slate-200 mb-1">
+                            Fantasy points by gameweek
+                          </p>
+                          <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/70">
+                            <table className="w-full text-[10px]">
+                              <thead className="bg-slate-900/80 text-slate-300">
+                                <tr>
+                                  <th className="px-2 py-1 text-left font-medium">
+                                    GW
+                                  </th>
+                                  <th className="px-2 py-1 text-left font-medium">
+                                    Name
+                                  </th>
+                                  <th className="px-2 py-1 text-right font-medium">
+                                    Points
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {monster.gameweekPoints
+                                  .slice()
+                                  .sort(
+                                    (a, b) =>
+                                      a.gameweekNumber - b.gameweekNumber
+                                  )
+                                  .map((gw) => (
+                                    <tr
+                                      key={gw.gameweekNumber}
+                                      className="border-t border-slate-800 text-slate-200"
+                                    >
+                                      <td className="px-2 py-1 font-mono">
+                                        GW {gw.gameweekNumber}
+                                      </td>
+                                      <td className="px-2 py-1">
+                                        {gw.name || "-"}
+                                      </td>
+                                      <td className="px-2 py-1 text-right font-mono text-emerald-300">
+                                        {gw.points}
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                   </div>
                 </div>
               </div>
@@ -544,7 +619,7 @@ export default function MonsterDetailModal({
                 )}
               </div>
 
-              {/* 🔥 Chip history */}
+              {/* Chip history */}
               <div className="mt-3">
                 <h3 className="text-[11px] font-semibold text-slate-200 mb-1">
                   Chip history
@@ -564,7 +639,7 @@ export default function MonsterDetailModal({
                           <MonsterChipBadge
                             name={asgn.chipName}
                             code={asgn.chipCode}
-                            gameweekNumber={asgn.gameweekNumber}
+                            gameweekNumber={asgn.gameweekNumber ?? undefined}
                           />
                           <span
                             className={`text-[10px] px-2 py-0.5 rounded-full border 
@@ -592,7 +667,7 @@ export default function MonsterDetailModal({
                 )}
               </div>
 
-              {/* NEW: Market price history */}
+              {/* Market price history */}
               <div className="mt-3">
                 <h3 className="text-[11px] font-semibold text-slate-200 mb-1">
                   Market price history

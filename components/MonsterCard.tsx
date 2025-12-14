@@ -153,6 +153,7 @@ export default function MonsterCard({
             : ""
         }`}
     >
+      {/* TOP CONTENT: art + info + evo + edition */}
       <div>
         {/* ART AREA */}
         {hasArt && (
@@ -233,7 +234,24 @@ export default function MonsterCard({
           </p>
         )}
 
-        {/* COMBAT STATS: ATTACK / DEFENCE */}
+        {/* Edition line – last piece of info, under Evo Lv. */}
+        {editionText && (
+          <p
+            className={`text-[10px] mt-1 ${
+              isUnique1of1
+                ? "text-slate-100 font-semibold"
+                : isGoldenLimited
+                ? "text-yellow-300 font-semibold"
+                : "text-amber-300"
+            }`}
+          >
+            {editionText}
+          </p>
+        )}
+      </div>
+
+      {/* PINNED STATS ROW NEAR BOTTOM */}
+      <div className="mt-auto">
         <div className="mt-2 grid grid-cols-2 gap-1 text-[10px] text-slate-200">
           <div className="flex items-center justify-between rounded-md bg-slate-900/70 px-2 py-1">
             <span className="font-semibold text-emerald-300">ATK</span>
@@ -248,21 +266,6 @@ export default function MonsterCard({
             </span>
           </div>
         </div>
-
-        {/* Edition line */}
-        {editionText && (
-          <p
-            className={`text-[10px] mt-1 ${
-              isUnique1of1
-                ? "text-slate-100 font-semibold"
-                : isGoldenLimited
-                ? "text-yellow-300 font-semibold"
-                : "text-amber-300"
-            }`}
-          >
-            {editionText}
-          </p>
-        )}
       </div>
 
       {children && <div className="mt-1">{children}</div>}
