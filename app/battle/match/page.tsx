@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 // ---- Types reused from your world ----
@@ -149,6 +149,42 @@ const HERO_POWER_DRAW = 2;
 // Passing: 1 mana
 const PASS_MANA_COST = 1;
 
+// Rewards (single-player)
+const SINGLE_WIN_COINS = 200;
+const SINGLE_DRAW_COINS = 100;
+const SINGLE_DAILY_COIN_CAP = 3000;
+
+// ---- SFX (place files in /public/sfx/...) ----
+
+type SfxKey =
+  | "deployDEF"
+  | "deployMID"
+  | "deployFWD"
+  | "attackMID"
+  | "attackFWD"
+  | "shootGK"
+  | "death"
+  | "pass"
+  | "spell"
+  | "heroPower"
+  | "uiClick";
+
+const SFX_PATHS: Record<SfxKey, string> = {
+  deployDEF: "/sfx/deploy-def.mp3",
+  deployMID: "/sfx/deploy-mid.mp3",
+  deployFWD: "/sfx/deploy-fwd.mp3",
+  attackMID: "/sfx/attack-mid.mp3",
+  attackFWD: "/sfx/attack-fwd.mp3",
+  shootGK: "/sfx/shoot-gk.mp3",
+  death: "/sfx/death.mp3",
+  pass: "/sfx/pass.mp3",
+  spell: "/sfx/spell.mp3",
+  heroPower: "/sfx/hero-power.mp3",
+  uiClick: "/sfx/click.mp3",
+};
+
+const MUSIC_PATH = "/sfx/battle-music.mp3";
+
 // ---- Small helpers ----
 
 function safeId(prefix: string) {
@@ -234,6 +270,33 @@ function setBallOnBoard(
 }
 
 /**
+ * ✅ NEW: Power curve boost for higher mana cost / rarity cards.
+ * Higher mana = stronger in BOTH attack and health.
+ * (Common stays baseline; Rare+ get progressively larger boosts.)
+ */
+function boostStatsForManaCost(
+  attack: number,
+  health: number,
+  manaCost: number
+): { attack: number; health: number } {
+  // Tuned, simple curve that keeps lower costs relevant while rewarding higher costs.
+  // You can tweak these numbers later without touching engine logic.
+  const table: Record<number, { atk: number; hp: number }> = {
+    1: { atk: 0, hp: 0 }, // COMMON
+    2: { atk: 1, hp: 2 }, // RARE
+    3: { atk: 2, hp: 4 }, // EPIC
+    4: { atk: 3, hp: 6 }, // LEGENDARY
+    5: { atk: 4, hp: 8 }, // MYTHIC
+  };
+
+  const bump = table[manaCost] ?? { atk: 0, hp: 0 };
+  return {
+    attack: attack + bump.atk,
+    health: health + bump.hp,
+  };
+}
+
+/**
  * ✅ NEW: Normalize ball state so it can NEVER "disappear".
  * Rules:
  * - If ballAtCenter === true → nobody has the ball.
@@ -256,7 +319,8 @@ function normalizeBallState(
   // If the ball is at center, nobody should have it.
   if (ballAtCenter) {
     const any =
-      playerBoard.some((m) => m.hasBall) || opponentBoard.some((m) => m.hasBall);
+      playerBoard.some((m) => m.hasBall) ||
+      opponentBoard.some((m) => m.hasBall);
     if (!any) {
       return { ballAtCenter, playerBoard, opponentBoard, log };
     }
@@ -293,8 +357,16 @@ function normalizeBallState(
     } else {
       nextOpponent = setBallOnBoard(nextOpponent, keep.idx);
     }
-    const nextLog = [...log, `Ball state normalized: ${keep.name} is the only ball-holder.`];
-    return { ballAtCenter: false, playerBoard: nextPlayer, opponentBoard: nextOpponent, log: nextLog };
+    const nextLog = [
+      ...log,
+      `Ball state normalized: ${keep.name} is the only ball-holder.`,
+    ];
+    return {
+      ballAtCenter: false,
+      playerBoard: nextPlayer,
+      opponentBoard: nextOpponent,
+      log: nextLog,
+    };
   }
 
   // holders.length === 0 → ball would "disappear" unless we assign it
@@ -302,7 +374,12 @@ function normalizeBallState(
 
   if (total === 0) {
     const nextLog = [...log, "The ball returns to the center of the pitch."];
-    return { ballAtCenter: true, playerBoard: nextPlayer, opponentBoard: nextOpponent, log: nextLog };
+    return {
+      ballAtCenter: true,
+      playerBoard: nextPlayer,
+      opponentBoard: nextOpponent,
+      log: nextLog,
+    };
   }
 
   const roll = Math.floor(Math.random() * total);
@@ -310,13 +387,23 @@ function normalizeBallState(
     const receiver = nextPlayer[roll];
     nextPlayer = setBallOnBoard(nextPlayer, roll);
     const nextLog = [...log, `${receiver.name} grabs the loose ball.`];
-    return { ballAtCenter: false, playerBoard: nextPlayer, opponentBoard: nextOpponent, log: nextLog };
+    return {
+      ballAtCenter: false,
+      playerBoard: nextPlayer,
+      opponentBoard: nextOpponent,
+      log: nextLog,
+    };
   } else {
     const idx = roll - nextPlayer.length;
     const receiver = nextOpponent[idx];
     nextOpponent = setBallOnBoard(nextOpponent, idx);
     const nextLog = [...log, `${receiver.name} grabs the loose ball.`];
-    return { ballAtCenter: false, playerBoard: nextPlayer, opponentBoard: nextOpponent, log: nextLog };
+    return {
+      ballAtCenter: false,
+      playerBoard: nextPlayer,
+      opponentBoard: nextOpponent,
+      log: nextLog,
+    };
   }
 }
 
@@ -327,16 +414,23 @@ function buildMonsterCard(m: UserMonsterDTO): BattleMonsterCard {
   const manaCost = manaFromRarity(rarityTier);
   const baseStats = ratingForMonster(m);
 
-  const attack =
+  let attack =
     m.baseAttack +
     Math.floor(m.evolutionLevel / 2) +
     (rarityTier === "LEGENDARY" || rarityTier === "MYTHIC" ? 1 : 0);
 
-  const health =
+  let health =
     m.baseDefense +
     5 +
     Math.floor(m.evolutionLevel / 2) +
     (rarityTier === "MYTHIC" ? 3 : 0);
+
+  // ✅ NEW: Boost higher-mana (rare/epic/legendary/mythic) stats
+  {
+    const boosted = boostStatsForManaCost(attack, health, manaCost);
+    attack = boosted.attack;
+    health = boosted.health;
+  }
 
   const magic = m.baseMagic;
 
@@ -386,7 +480,8 @@ function buildMonsterCard(m: UserMonsterDTO): BattleMonsterCard {
 }
 
 function buildHeroFromGK(gk: UserMonsterDTO): HeroState {
-  const baseHp = 300;
+  // ✅ CHANGED: GK health lowered to 250
+  const baseHp = 250;
   return {
     name: gk.displayName || gk.realPlayerName,
     hp: baseHp,
@@ -464,8 +559,7 @@ function createSpellCards(): BattleSpellCard[] {
     {
       kind: "SPELL",
       name: "Iron Wall",
-      description:
-        "Reinforce your Goalkeeper. Gain 25 armor on your Goalkeeper.",
+      description: "Reinforce your Goalkeeper. Gain 25 armor on your Goalkeeper.",
       manaCost: 3,
       effect: "SHIELD_HERO",
       value: 25,
@@ -669,9 +763,7 @@ function startTurn(p: PlayerState, turn: number): PlayerState {
     }
 
     const canAttack =
-      m.position !== "DEF" &&
-      !hasSummoningSickness &&
-      stunnedForTurns === 0;
+      m.position !== "DEF" && !hasSummoningSickness && stunnedForTurns === 0;
 
     return {
       ...m,
@@ -947,7 +1039,9 @@ function applyAttack(
         nextBallAtCenter = false;
       } else if (!attackerDies && targetDies) {
         // Attacker survives, gains the ball
-        const updatedIndex = newAttackerBoard.findIndex((c) => c.id === attacker.id);
+        const updatedIndex = newAttackerBoard.findIndex(
+          (c) => c.id === attacker.id
+        );
         if (updatedIndex >= 0) {
           newAttackerBoard = newAttackerBoard.map((c, idx) => ({
             ...c,
@@ -980,7 +1074,9 @@ function applyAttack(
         nextBallAtCenter = false;
       } else if (!attackerDies) {
         // Attacker survives, keeps the ball
-        const updatedIndex = newAttackerBoard.findIndex((c) => c.id === attacker.id);
+        const updatedIndex = newAttackerBoard.findIndex(
+          (c) => c.id === attacker.id
+        );
         if (updatedIndex >= 0) {
           newAttackerBoard = newAttackerBoard.map((c, idx) => ({
             ...c,
@@ -1003,7 +1099,9 @@ function applyAttack(
   }
 
   // Mark attacker as used if still alive on board
-  const updatedAttackerIndex = newAttackerBoard.findIndex((c) => c.id === attacker.id);
+  const updatedAttackerIndex = newAttackerBoard.findIndex(
+    (c) => c.id === attacker.id
+  );
   if (updatedAttackerIndex >= 0) {
     newAttackerBoard[updatedAttackerIndex] = {
       ...attacker,
@@ -1073,14 +1171,18 @@ function giveBallToMonster(
   const newPlayerBoard =
     owner === "player"
       ? state.player.board.map((m) =>
-          m.id === monsterId ? { ...m, hasBall: true } : { ...m, hasBall: false }
+          m.id === monsterId
+            ? { ...m, hasBall: true }
+            : { ...m, hasBall: false }
         )
       : state.player.board.map((m) => ({ ...m, hasBall: false }));
 
   const newOpponentBoard =
     owner === "opponent"
       ? state.opponent.board.map((m) =>
-          m.id === monsterId ? { ...m, hasBall: true } : { ...m, hasBall: false }
+          m.id === monsterId
+            ? { ...m, hasBall: true }
+            : { ...m, hasBall: false }
         )
       : state.opponent.board.map((m) => ({ ...m, hasBall: false }));
 
@@ -1144,9 +1246,7 @@ function playTargetedSpellFromHand(
     newActing.board = [...newActing.board];
     newActing.board[targetIndex] = updated;
 
-    log.push(
-      `${acting.label} cast ${card.name}. ${target.name} enters Stealth.`
-    );
+    log.push(`${acting.label} cast ${card.name}. ${target.name} enters Stealth.`);
   }
 
   if (card.effect === "KILL_MINION") {
@@ -1292,7 +1392,9 @@ function playCardFromHand(
 
     if (isFirstToBall) {
       nextBallAtCenter = false;
-      log.push(`${acting.label}'s ${monster.name} takes first touch and gains the ball.`);
+      log.push(
+        `${acting.label}'s ${monster.name} takes first touch and gains the ball.`
+      );
     } else {
       log.push(`${acting.label} played ${monster.name} (${monster.position})`);
     }
@@ -1417,9 +1519,7 @@ function playCardFromHand(
           newActing.board = [...newActing.board];
           newActing.board[chosenIdx] = addKeyword(target, "STEALTH");
 
-          log.push(
-            `${acting.label} cast ${card.name}. ${target.name} enters Stealth.`
-          );
+          log.push(`${acting.label} cast ${card.name}. ${target.name} enters Stealth.`);
         }
         break;
       }
@@ -1511,10 +1611,7 @@ function playCardFromHand(
       };
     }
 
-    if (
-      nextAfterSpell.player.hero.hp <= 0 &&
-      nextAfterSpell.opponent.hero.hp <= 0
-    ) {
+    if (nextAfterSpell.player.hero.hp <= 0 && nextAfterSpell.opponent.hero.hp <= 0) {
       nextAfterSpell = { ...nextAfterSpell, winner: "DRAW" };
     } else if (nextAfterSpell.player.hero.hp <= 0) {
       nextAfterSpell = { ...nextAfterSpell, winner: "opponent" };
@@ -1702,10 +1799,7 @@ function runOpponentTurn(state: BattleState): BattleState {
 
 // ---- Initial battle creation (using chosen XI & selected GK) ----
 
-function createInitialBattleFromXI(
-  xi: UserMonsterDTO[],
-  heroMonster: UserMonsterDTO
-): BattleState {
+function createInitialBattleFromXI(xi: UserMonsterDTO[], heroMonster: UserMonsterDTO): BattleState {
   const hero = buildHeroFromGK(heroMonster);
   return createBattleFromBase(xi, hero);
 }
@@ -1819,6 +1913,183 @@ function BattleMatchInner() {
   const [queueStatus, setQueueStatus] = useState<QueueStatus>("IDLE");
   const [queueError, setQueueError] = useState<string | null>(null);
 
+  // --- SFX + Music ---
+  const [isMuted, setIsMuted] = useState(false);
+  const sfxRef = useRef<Record<SfxKey, HTMLAudioElement> | null>(null);
+  const musicRef = useRef<HTMLAudioElement | null>(null);
+  const musicStartedRef = useRef(false);
+
+  // --- Reward state (single-player) ---
+  const [rewardInfo, setRewardInfo] = useState<{
+    requested: number;
+    granted: number;
+    capRemaining: number;
+    status: "IDLE" | "GRANTED" | "ERROR";
+    message?: string;
+  } | null>(null);
+
+  const playSfx = (key: SfxKey) => {
+    if (isMuted) return;
+    const a = sfxRef.current?.[key];
+    if (!a) return;
+    try {
+      a.currentTime = 0;
+      void a.play();
+    } catch {
+      // ignore
+    }
+  };
+
+  const startMusic = () => {
+    if (isMuted) return;
+    const m = musicRef.current;
+    if (!m) return;
+    if (musicStartedRef.current) return;
+    musicStartedRef.current = true;
+    try {
+      m.currentTime = 0;
+      void m.play();
+    } catch {
+      // Autoplay restrictions: we'll keep trying on the next user interaction
+      musicStartedRef.current = false;
+    }
+  };
+
+  const stopMusic = () => {
+    const m = musicRef.current;
+    if (!m) return;
+    try {
+      m.pause();
+      m.currentTime = 0;
+    } catch {
+      // ignore
+    } finally {
+      musicStartedRef.current = false;
+    }
+  };
+
+  const getTorontoDateKey = () => {
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Toronto",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+    } catch {
+      // fallback
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  };
+
+  const applyDailyCapAndPersist = (requested: number) => {
+    const day = getTorontoDateKey();
+    const key = `fml_single_battle_coins_${day}`;
+    let earned = 0;
+
+    try {
+      const raw = localStorage.getItem(key);
+      earned = raw ? Number(raw) || 0 : 0;
+    } catch {
+      earned = 0;
+    }
+
+    const remaining = Math.max(0, SINGLE_DAILY_COIN_CAP - earned);
+    const granted = Math.max(0, Math.min(requested, remaining));
+    const nextEarned = earned + granted;
+
+    try {
+      localStorage.setItem(key, String(nextEarned));
+    } catch {
+      // ignore
+    }
+
+    return { granted, remainingAfter: Math.max(0, SINGLE_DAILY_COIN_CAP - nextEarned) };
+  };
+
+  const tryGrantCoinsServer = async (amount: number) => {
+    // NOTE: If your backend route differs, update this path.
+    // This is wrapped in try/catch so it never breaks battle mode.
+    await fetch("/api/me/coins/earn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        amount,
+        source: "SINGLE_BATTLE",
+      }),
+    });
+  };
+
+  // Preload audio on mount
+  useEffect(() => {
+    // Load mute preference
+    try {
+      const raw = localStorage.getItem("fml_battle_muted");
+      if (raw === "1") setIsMuted(true);
+    } catch {
+      // ignore
+    }
+
+    const loaded: Record<SfxKey, HTMLAudioElement> = {
+      deployDEF: new Audio(SFX_PATHS.deployDEF),
+      deployMID: new Audio(SFX_PATHS.deployMID),
+      deployFWD: new Audio(SFX_PATHS.deployFWD),
+      attackMID: new Audio(SFX_PATHS.attackMID),
+      attackFWD: new Audio(SFX_PATHS.attackFWD),
+      shootGK: new Audio(SFX_PATHS.shootGK),
+      death: new Audio(SFX_PATHS.death),
+      pass: new Audio(SFX_PATHS.pass),
+      spell: new Audio(SFX_PATHS.spell),
+      heroPower: new Audio(SFX_PATHS.heroPower),
+      uiClick: new Audio(SFX_PATHS.uiClick),
+    };
+
+    // Small per-SFX volume tuning
+    (Object.keys(loaded) as SfxKey[]).forEach((k) => {
+      loaded[k].volume = k === "death" ? 0.7 : 0.55;
+      loaded[k].preload = "auto";
+    });
+
+    sfxRef.current = loaded;
+
+    const music = new Audio(MUSIC_PATH);
+    music.loop = true;
+    music.volume = 0.22;
+    music.preload = "auto";
+    musicRef.current = music;
+
+    return () => {
+      try {
+        music.pause();
+      } catch {
+        // ignore
+      }
+      sfxRef.current = null;
+      musicRef.current = null;
+    };
+  }, []);
+
+  // Persist mute + start/stop music accordingly
+  useEffect(() => {
+    try {
+      localStorage.setItem("fml_battle_muted", isMuted ? "1" : "0");
+    } catch {
+      // ignore
+    }
+    if (isMuted) {
+      stopMusic();
+    } else {
+      // if a battle is active, try to start music (requires user interaction; will retry)
+      if (battle && !battle.winner) startMusic();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMuted]);
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -1847,13 +2118,7 @@ function BattleMatchInner() {
 
   // Auto-pick XI once collection is loaded (formation-based), only if nothing picked yet
   useEffect(() => {
-    if (
-      !loading &&
-      !error &&
-      collection.length > 0 &&
-      deckSelection.length === 0 &&
-      !heroId
-    ) {
+    if (!loading && !error && collection.length > 0 && deckSelection.length === 0 && !heroId) {
       const result = autoPickForFormation(collection, activeFormation);
       setDeckSelection(result.deckIds);
       setHeroId(result.heroId);
@@ -1931,10 +2196,7 @@ function BattleMatchInner() {
     [collection, deckSelection]
   );
 
-  const heroCandidates = useMemo(
-    () => collection.filter((m) => m.position === "GK"),
-    [collection]
-  );
+  const heroCandidates = useMemo(() => collection.filter((m) => m.position === "GK"), [collection]);
 
   const deckCounts = useMemo(() => {
     const c: Record<string, number> = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
@@ -1945,10 +2207,7 @@ function BattleMatchInner() {
   }, [selectedMonstersForDeck]);
 
   const filteredCollection = useMemo(
-    () =>
-      collection.filter((m) =>
-        positionFilter === "ALL" ? true : m.position === positionFilter
-      ),
+    () => collection.filter((m) => (positionFilter === "ALL" ? true : m.position === positionFilter)),
     [collection, positionFilter]
   );
 
@@ -1957,6 +2216,7 @@ function BattleMatchInner() {
   const handleToggleDeckMonster = (id: string) => {
     setDeckError(null);
     setActionMessage(null);
+    playSfx("uiClick");
     setDeckSelection((prev) => {
       if (prev.includes(id)) {
         return prev.filter((x) => x !== id);
@@ -1970,6 +2230,7 @@ function BattleMatchInner() {
     setDeckError(null);
     setActionMessage(null);
     if (collection.length === 0) return;
+    playSfx("uiClick");
     const result = autoPickForFormation(collection, activeFormation);
     setDeckSelection(result.deckIds);
     setHeroId(result.heroId);
@@ -1979,11 +2240,12 @@ function BattleMatchInner() {
     setDeckError(null);
     setActionMessage(null);
     setQueueError(null);
+    setRewardInfo(null);
+
+    playSfx("uiClick");
 
     if (deckSelection.length !== OUTFIELD_REQUIRED) {
-      setDeckError(
-        `You must pick exactly ${OUTFIELD_REQUIRED} outfield monsters to start the battle.`
-      );
+      setDeckError(`You must pick exactly ${OUTFIELD_REQUIRED} outfield monsters to start the battle.`);
       return;
     }
 
@@ -2016,7 +2278,7 @@ function BattleMatchInner() {
       return;
     }
 
-    // --- PvP mode: join queue instead of creating a local AI battle ---
+    // --- PvP mode: join queue instead of creating a local AI battle (unchanged) ---
     if (isPvP) {
       try {
         setQueueStatus("IDLE");
@@ -2059,6 +2321,9 @@ function BattleMatchInner() {
     setActionMessage(null);
     setPendingSpell(null);
     setBattle(next);
+
+    // Start background music on user interaction (Start Battle click counts)
+    startMusic();
   };
 
   const handlePlayCard = (handIndex: number) => {
@@ -2076,6 +2341,7 @@ function BattleMatchInner() {
       actingKey === "player" &&
       (card.effect === "STEALTH_MINION" || card.effect === "KILL_MINION")
     ) {
+      playSfx("uiClick");
       setSelectedAttacker(null);
       setPendingSpell({ handIndex, name: card.name, effect: card.effect });
       setActionMessage(
@@ -2094,10 +2360,19 @@ function BattleMatchInner() {
     if (card && card.kind === "MONSTER" && card.position === "FWD") {
       const hasMidfielder = acting.board.some((m) => m.position === "MID");
       if (!hasMidfielder) {
-        setActionMessage(
-          "You need a Midfielder on your side of the pitch before you can play a Forward."
-        );
+        setActionMessage("You need a Midfielder on your side of the pitch before you can play a Forward.");
         return;
+      }
+    }
+
+    // --- SFX for playing cards (player only) ---
+    if (actingKey === "player" && card) {
+      if (card.kind === "MONSTER") {
+        if (card.position === "DEF") playSfx("deployDEF");
+        if (card.position === "MID") playSfx("deployMID");
+        if (card.position === "FWD") playSfx("deployFWD");
+      } else {
+        playSfx("spell");
       }
     }
 
@@ -2105,12 +2380,33 @@ function BattleMatchInner() {
     setPendingSpell(null);
     setActionMessage(null);
     setBattle((prev) => (prev ? playCardFromHand(prev, actingKey, handIndex) : prev));
+
+    // If unmuted, attempt to start music once the user starts interacting during battle
+    startMusic();
   };
 
   // ✅ Cancel targeting if needed
   const handleCancelTargeting = () => {
+    playSfx("uiClick");
     setPendingSpell(null);
     setActionMessage(null);
+  };
+
+  // ✅ NEW: Forfeit match (player loses immediately)
+  const handleForfeitMatch = () => {
+    playSfx("uiClick");
+    stopMusic();
+    setSelectedAttacker(null);
+    setPendingSpell(null);
+    setActionMessage(null);
+    setBattle((prev) => {
+      if (!prev || prev.winner) return prev;
+      return {
+        ...prev,
+        winner: "opponent",
+        log: [...prev.log, "Player forfeited the match."],
+      };
+    });
   };
 
   // ⚽ Handle clicking *your own* monsters: select attacker OR pass the ball OR target a spell
@@ -2134,14 +2430,14 @@ function BattleMatchInner() {
         }
       }
 
+      playSfx("spell");
       setBattle((prev) =>
-        prev
-          ? playTargetedSpellFromHand(prev, "player", pendingSpell.handIndex, "player", idx)
-          : prev
+        prev ? playTargetedSpellFromHand(prev, "player", pendingSpell.handIndex, "player", idx) : prev
       );
       setPendingSpell(null);
       setActionMessage(null);
       setSelectedAttacker(null);
+      startMusic();
       return;
     }
 
@@ -2178,9 +2474,7 @@ function BattleMatchInner() {
 
     // Source has the ball → attempt a PASS to idx
     if (battle.player.mana < PASS_MANA_COST) {
-      setActionMessage(
-        `Not enough mana to pass. Passing costs ${PASS_MANA_COST} mana.`
-      );
+      setActionMessage(`Not enough mana to pass. Passing costs ${PASS_MANA_COST} mana.`);
       return;
     }
 
@@ -2217,6 +2511,9 @@ function BattleMatchInner() {
         log: newLog,
       };
     });
+
+    playSfx("pass");
+    startMusic();
 
     setSelectedAttacker(idx);
     setActionMessage(null);
@@ -2260,10 +2557,14 @@ function BattleMatchInner() {
       return;
     }
 
+    // SFX: attacker shooting GK (MID/FWD)
+    if (attacker.position === "MID") playSfx("attackMID");
+    if (attacker.position === "FWD") playSfx("attackFWD");
+    playSfx("shootGK");
+    startMusic();
+
     setActionMessage(null);
-    setBattle((prev) =>
-      prev ? applyAttack(prev, "player", selectedAttacker, "HERO") : prev
-    );
+    setBattle((prev) => (prev ? applyAttack(prev, "player", selectedAttacker, "HERO") : prev));
     setSelectedAttacker(null);
   };
 
@@ -2277,10 +2578,10 @@ function BattleMatchInner() {
 
     // ✅ Targeted spell resolution (enemy side)
     if (pendingSpell) {
+      playSfx("spell");
+      startMusic();
       setBattle((prev) =>
-        prev
-          ? playTargetedSpellFromHand(prev, "player", pendingSpell.handIndex, "opponent", enemyIdx)
-          : prev
+        prev ? playTargetedSpellFromHand(prev, "player", pendingSpell.handIndex, "opponent", enemyIdx) : prev
       );
       setPendingSpell(null);
       setActionMessage(null);
@@ -2321,14 +2622,19 @@ function BattleMatchInner() {
       return;
     }
 
+    // SFX: attacker combat (MID/FWD)
+    if (attacker.position === "MID") playSfx("attackMID");
+    if (attacker.position === "FWD") playSfx("attackFWD");
+    startMusic();
+
     setActionMessage(null);
-    setBattle((prev) =>
-      prev ? applyAttack(prev, "player", selectedAttacker, "MINION", enemyIdx) : prev
-    );
+    setBattle((prev) => (prev ? applyAttack(prev, "player", selectedAttacker, "MINION", enemyIdx) : prev));
     setSelectedAttacker(null);
   };
 
   const handleEndTurn = () => {
+    playSfx("uiClick");
+    startMusic();
     setSelectedAttacker(null);
     setPendingSpell(null);
     setActionMessage(null);
@@ -2355,21 +2661,25 @@ function BattleMatchInner() {
       setActionMessage(`Not enough mana. Hero Power costs ${HERO_POWER_COST}.`);
       return;
     }
+
+    playSfx("heroPower");
+    startMusic();
+
     setActionMessage(null);
     setSelectedAttacker(null);
     setBattle((prev) => (prev ? useHeroPower(prev, "player") : prev));
   };
 
   const handleRestart = () => {
+    playSfx("uiClick");
+    startMusic();
+
+    setRewardInfo(null);
     setPendingSpell(null);
     if (deckSelection.length === OUTFIELD_REQUIRED && heroId) {
       const xiOutfield = collection.filter((m) => deckSelection.includes(m.id));
       const heroMonster = collection.find((m) => m.id === heroId);
-      if (
-        xiOutfield.length === OUTFIELD_REQUIRED &&
-        heroMonster &&
-        heroMonster.position === "GK"
-      ) {
+      if (xiOutfield.length === OUTFIELD_REQUIRED && heroMonster && heroMonster.position === "GK") {
         const next = createInitialBattleFromXI(xiOutfield, heroMonster);
         setSelectedAttacker(null);
         setActionMessage(null);
@@ -2379,14 +2689,140 @@ function BattleMatchInner() {
     }
     // Fallback: if for some reason GK or XI invalid, go back to squad selection
     setBattle(null);
-    setActionMessage(
-      "Your XI or Goalkeeper selection is no longer valid. Please re-pick your squad."
-    );
+    setActionMessage("Your XI or Goalkeeper selection is no longer valid. Please re-pick your squad.");
   };
 
   const playerBoard = battle?.player.board ?? [];
   const opponentBoard = battle?.opponent.board ?? [];
   const logView = useMemo(() => battle?.log.slice(-8) ?? [], [battle]);
+
+  // ✅ NEW: Auto-draw detection for stalemate:
+  // If BOTH sides have no cards left (deck+hand) and there are no attackers left on the pitch
+  // (i.e. only DEF remain, or empty boards), then nobody can ever score → DRAW.
+  useEffect(() => {
+    if (!battle) return;
+    if (battle.winner) return;
+
+    const noCardsLeft = (p: PlayerState) => p.deck.length === 0 && p.hand.length === 0;
+    const hasAnyAttacker = (p: PlayerState) => p.board.some((m) => m.position !== "DEF");
+
+    const stalemate =
+      noCardsLeft(battle.player) &&
+      noCardsLeft(battle.opponent) &&
+      !hasAnyAttacker(battle.player) &&
+      !hasAnyAttacker(battle.opponent);
+
+    if (stalemate) {
+      setBattle((prev) => {
+        if (!prev || prev.winner) return prev;
+        return {
+          ...prev,
+          winner: "DRAW",
+          log: [
+            ...prev.log,
+            "Only defenders remain and both sides are out of cards — nobody can attack, so the match ends in a draw.",
+          ],
+        };
+      });
+    }
+  }, [battle]);
+
+  // --- Reward payout on battle end (single-player only) ---
+  useEffect(() => {
+    if (!battle) return;
+    if (!battle.winner) return;
+    if (isPvP) return;
+    if (rewardInfo?.status === "GRANTED" || rewardInfo?.status === "ERROR") return;
+
+    const requested =
+      battle.winner === "player"
+        ? SINGLE_WIN_COINS
+        : battle.winner === "DRAW"
+        ? SINGLE_DRAW_COINS
+        : 0;
+
+    if (requested <= 0) {
+      setRewardInfo({
+        requested: 0,
+        granted: 0,
+        capRemaining: SINGLE_DAILY_COIN_CAP,
+        status: "GRANTED",
+      });
+      return;
+    }
+
+    const { granted, remainingAfter } = applyDailyCapAndPersist(requested);
+
+    const run = async () => {
+      try {
+        if (granted > 0) {
+          // Attempt to grant on server (safe-fail).
+          await tryGrantCoinsServer(granted);
+        }
+        setRewardInfo({
+          requested,
+          granted,
+          capRemaining: remainingAfter,
+          status: "GRANTED",
+          message:
+            granted === 0
+              ? "Daily cap reached (0 coins awarded)."
+              : granted < requested
+              ? `Daily cap applied (${granted}/${requested} coins awarded).`
+              : undefined,
+        });
+      } catch (e) {
+        // Still keep local cap tracking; show error for server sync.
+        setRewardInfo({
+          requested,
+          granted,
+          capRemaining: remainingAfter,
+          status: "ERROR",
+          message: "Coins were capped locally, but server crediting failed (check /api/me/coins/earn).",
+        });
+      }
+    };
+
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [battle?.winner, isPvP]);
+
+  // --- SFX: detect deaths + GK shots + opponent deploys automatically (no engine side-effects) ---
+  const prevBattleRef = useRef<BattleState | null>(null);
+  useEffect(() => {
+    if (!battle) {
+      prevBattleRef.current = null;
+      return;
+    }
+
+    const prev = prevBattleRef.current;
+    if (prev) {
+      // Monster death SFX (either side)
+      const playerDeaths = battle.player.board.length < prev.player.board.length;
+      const oppDeaths = battle.opponent.board.length < prev.opponent.board.length;
+      if (playerDeaths || oppDeaths) playSfx("death");
+
+      // GK shot SFX (either GK took damage)
+      const playerGkHit = battle.player.hero.hp < prev.player.hero.hp;
+      const oppGkHit = battle.opponent.hero.hp < prev.opponent.hero.hp;
+      if (playerGkHit || oppGkHit) playSfx("shootGK");
+
+      // Opponent deploy SFX
+      if (battle.opponent.board.length > prev.opponent.board.length) {
+        const added = battle.opponent.board.find(
+          (m) => !prev.opponent.board.some((x) => x.id === m.id)
+        );
+        if (added) {
+          if (added.position === "DEF") playSfx("deployDEF");
+          if (added.position === "MID") playSfx("deployMID");
+          if (added.position === "FWD") playSfx("deployFWD");
+        }
+      }
+    }
+
+    prevBattleRef.current = battle;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [battle]);
 
   if (loading) {
     return (
@@ -2402,13 +2838,10 @@ function BattleMatchInner() {
     return (
       <main className="space-y-4">
         <section className="rounded-2xl border border-red-500/40 bg-red-950/60 p-4">
-          <h2 className="mb-1 text-sm font-semibold text-red-200">
-            Battle mode error
-          </h2>
+          <h2 className="mb-1 text-sm font-semibold text-red-200">Battle mode error</h2>
           <p className="mb-2 text-xs text-red-200">{error}</p>
           <p className="text-xs text-red-100">
-            Make sure you&apos;re logged in and have at least a few monsters in
-            your collection.
+            Make sure you&apos;re logged in and have at least a few monsters in your collection.
           </p>
         </section>
       </main>
@@ -2435,9 +2868,7 @@ function BattleMatchInner() {
         <section className="space-y-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/60 p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-emerald-100">
-                Pick your XI for Battle Mode
-              </h2>
+              <h2 className="text-lg font-semibold text-emerald-100">Pick your XI for Battle Mode</h2>
               <p className="text-[11px] text-emerald-200">
                 Choose 10 outfield monsters and 1 Goalkeeper hero from your FML collection to form your XI.
               </p>
@@ -2448,16 +2879,11 @@ function BattleMatchInner() {
             </div>
           </div>
 
-          <p className="text-[10px] text-emerald-300">
-            You play as Player 1 against an AI-controlled Player 2.
-          </p>
+          <p className="text-[10px] text-emerald-300">You play as Player 1 against an AI-controlled Player 2.</p>
 
           <div className="flex flex-wrap items-center gap-4 text-[11px] text-emerald-100">
             <span>
-              Selected:{" "}
-              <span className="font-mono font-semibold">
-                {totalSelectedCount}/{TOTAL_XI}
-              </span>
+              Selected: <span className="font-mono font-semibold">{totalSelectedCount}/{TOTAL_XI}</span>
             </span>
             <span>
               GK: <span className="font-mono">{heroId ? 1 : 0}</span>
@@ -2509,7 +2935,10 @@ function BattleMatchInner() {
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={heroId ?? ""}
-                  onChange={(e) => setHeroId(e.target.value || null)}
+                  onChange={(e) => {
+                    playSfx("uiClick");
+                    setHeroId(e.target.value || null);
+                  }}
                   className="rounded-full border border-emerald-500/60 bg-emerald-950/70 px-2 py-1 text-[11px] text-emerald-100"
                 >
                   <option value="">Select your Goalkeeper…</option>
@@ -2562,11 +2991,12 @@ function BattleMatchInner() {
                 <button
                   key={f}
                   type="button"
-                  onClick={() => setPositionFilter(f)}
+                  onClick={() => {
+                    playSfx("uiClick");
+                    setPositionFilter(f);
+                  }}
                   className={`rounded-full px-2 py-0.5 ${
-                    positionFilter === f
-                      ? "bg-emerald-400 text-slate-950"
-                      : "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                    positionFilter === f ? "bg-emerald-400 text-slate-950" : "bg-slate-800 text-slate-200 hover:bg-slate-700"
                   }`}
                 >
                   {f === "ALL" ? "All" : f}
@@ -2604,12 +3034,12 @@ function BattleMatchInner() {
 
     return (
       <main className="space-y-4">
+        {/* (unchanged PvP XI UI) */}
+        {/* ... your existing PvP selection UI remains unchanged ... */}
         <section className="space-y-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/60 p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-emerald-100">
-                Pick your XI for Online PvP
-              </h2>
+              <h2 className="text-lg font-semibold text-emerald-100">Pick your XI for Online PvP</h2>
               <p className="text-[11px] text-emerald-200">
                 Choose 10 outfield monsters and 1 Goalkeeper hero from your FML collection. Once ready, you&apos;ll join the online queue and be
                 matched against another manager.
@@ -2627,10 +3057,7 @@ function BattleMatchInner() {
 
           <div className="flex flex-wrap items-center gap-4 text-[11px] text-emerald-100">
             <span>
-              Selected:{" "}
-              <span className="font-mono font-semibold">
-                {totalSelectedCount}/{TOTAL_XI}
-              </span>
+              Selected: <span className="font-mono font-semibold">{totalSelectedCount}/{TOTAL_XI}</span>
             </span>
             <span>
               GK: <span className="font-mono">{heroId ? 1 : 0}</span>
@@ -2646,13 +3073,15 @@ function BattleMatchInner() {
             </span>
           </div>
 
-          {/* Formation + auto pick */}
           <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-emerald-100">
             <div className="flex items-center gap-2">
               <span className="font-semibold">Formation</span>
               <select
                 value={formationId}
-                onChange={(e) => setFormationId(e.target.value)}
+                onChange={(e) => {
+                  playSfx("uiClick");
+                  setFormationId(e.target.value);
+                }}
                 className="rounded-full border border-emerald-500/60 bg-emerald-950/70 px-2 py-1 text-[11px] text-emerald-100"
               >
                 {FORMATIONS.map((f) => (
@@ -2671,7 +3100,6 @@ function BattleMatchInner() {
             </button>
           </div>
 
-          {/* GK selection */}
           <div className="mt-2 space-y-1 text-[11px] text-emerald-100">
             <p className="font-semibold">Goalkeeper hero (counts in XI)</p>
             {heroCandidates.length === 0 ? (
@@ -2682,7 +3110,10 @@ function BattleMatchInner() {
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={heroId ?? ""}
-                  onChange={(e) => setHeroId(e.target.value || null)}
+                  onChange={(e) => {
+                    playSfx("uiClick");
+                    setHeroId(e.target.value || null);
+                  }}
                   className="rounded-full border border-emerald-500/60 bg-emerald-950/70 px-2 py-1 text-[11px] text-emerald-100"
                 >
                   <option value="">Select your Goalkeeper…</option>
@@ -2709,7 +3140,6 @@ function BattleMatchInner() {
             </p>
           )}
 
-          {/* Find Match button */}
           <div className="mt-3 flex justify-end">
             <button
               type="button"
@@ -2735,17 +3165,17 @@ function BattleMatchInner() {
                 as your hero and cannot be used as outfield cards.
               </p>
             </div>
-            {/* Position filter */}
             <div className="flex flex-wrap gap-1 text-[10px]">
               {(["ALL", "GK", "DEF", "MID", "FWD"] as PositionFilter[]).map((f) => (
                 <button
                   key={f}
                   type="button"
-                  onClick={() => setPositionFilter(f)}
+                  onClick={() => {
+                    playSfx("uiClick");
+                    setPositionFilter(f);
+                  }}
                   className={`rounded-full px-2 py-0.5 ${
-                    positionFilter === f
-                      ? "bg-emerald-400 text-slate-950"
-                      : "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                    positionFilter === f ? "bg-emerald-400 text-slate-950" : "bg-slate-800 text-slate-200 hover:bg-slate-700"
                   }`}
                 >
                   {f === "ALL" ? "All" : f}
@@ -2800,23 +3230,20 @@ function BattleMatchInner() {
       `}</style>
 
       <main className="space-y-4">
-        {/* Top controls: mana + timer + Hero Power + End Turn + Restart */}
-        <section className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Top info (no End Turn / Restart here anymore) */}
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
           <div className="space-y-1">
             <p className="text-[11px] text-slate-300">
-              Turn{" "}
-              <span className="font-mono font-semibold text-slate-50">{battle!.turn}</span>{" "}
-              • Active:{" "}
+              Turn <span className="font-mono font-semibold text-slate-50">{battle!.turn}</span> • Active:{" "}
               <span className="font-semibold text-emerald-300">
                 {battle!.active === "player" ? "You" : "Opponent (AI)"}
               </span>
             </p>
+
             <div className="flex flex-wrap items-center gap-3">
               {/* Mana indicator */}
               <div className="flex items-center gap-2">
-                <span className="text-[10px] uppercase tracking-wide text-sky-200">
-                  Mana
-                </span>
+                <span className="text-[10px] uppercase tracking-wide text-sky-200">Mana</span>
                 <div className="flex gap-1">
                   {Array.from({ length: Math.max(battle!.player.maxMana, 1) }).map((_, i) => (
                     <div
@@ -2834,9 +3261,7 @@ function BattleMatchInner() {
 
               {/* Turn timer */}
               <div className="flex items-center gap-2">
-                <span className="text-[10px] uppercase tracking-wide text-amber-200">
-                  Turn timer
-                </span>
+                <span className="text-[10px] uppercase tracking-wide text-amber-200">Turn timer</span>
                 <div className="relative h-5 w-24 overflow-hidden rounded-full border border-amber-400/60 bg-slate-800">
                   <div
                     className={`h-full ${turnTimer <= 5 ? "bg-red-500" : "bg-amber-400"}`}
@@ -2851,69 +3276,65 @@ function BattleMatchInner() {
               </div>
             </div>
 
-            {battle!.winner && (
-              <p className="mt-1 text-[11px] font-semibold text-emerald-300">
-                {battle!.winner === "DRAW"
-                  ? "Draw!"
-                  : battle!.winner === "player"
-                  ? "You win!"
-                  : "Opponent wins!"}
-              </p>
-            )}
-
             {pendingSpell && (
               <p className="mt-1 text-[11px] text-indigo-200">
                 Targeting: <span className="font-semibold">{pendingSpell.name}</span>
               </p>
             )}
 
-            {actionMessage && (
-              <p className="mt-1 text-[11px] text-amber-300">{actionMessage}</p>
-            )}
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2">
-            {pendingSpell && (
-              <button
-                type="button"
-                onClick={handleCancelTargeting}
-                className="rounded-full border border-indigo-400/70 px-3 py-1.5 text-[11px] font-semibold text-indigo-200 hover:bg-indigo-500/20"
-              >
-                Cancel Targeting
-              </button>
-            )}
-
-            <button
-              type="button"
-              disabled={
-                !!battle!.winner ||
-                battle!.active !== "player" ||
-                battle!.player.mana < HERO_POWER_COST
-              }
-              onClick={handleHeroPowerClick}
-              className="rounded-full border border-emerald-500/70 px-3 py-1.5 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Hero Power (3 Mana)
-            </button>
-
-            <button
-              type="button"
-              disabled={!!battle!.winner}
-              onClick={handleEndTurn}
-              className="rounded-full border border-slate-500/70 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              End Turn
-            </button>
-
-            <button
-              type="button"
-              onClick={handleRestart}
-              className="rounded-full border border-emerald-500/70 px-3 py-1.5 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20"
-            >
-              Restart Battle
-            </button>
+            {actionMessage && <p className="mt-1 text-[11px] text-amber-300">{actionMessage}</p>}
           </div>
         </section>
+
+        {/* ✅ UPDATED: Bigger, "Hearthstone-like" right-side controls (End Turn + Forfeit) */}
+        <aside className="fixed right-0 top-1/2 z-50 flex -translate-y-1/2 flex-col items-stretch gap-2 pr-2">
+          {pendingSpell && (
+            <button
+              type="button"
+              onClick={handleCancelTargeting}
+              className="w-40 rounded-l-2xl border border-indigo-400/70 bg-slate-950/90 px-4 py-3 text-sm font-extrabold text-indigo-200 shadow-2xl hover:bg-indigo-500/20"
+            >
+              Cancel Target
+            </button>
+          )}
+
+          <button
+            type="button"
+            disabled={!!battle!.winner || battle!.active !== "player"}
+            onClick={handleEndTurn}
+            className="w-40 rounded-l-2xl border border-emerald-400/80 bg-slate-950/90 px-4 py-5 text-base font-extrabold text-emerald-200 shadow-2xl hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            End Turn
+          </button>
+
+          <button
+            type="button"
+            disabled={!!battle!.winner}
+            onClick={handleForfeitMatch}
+            className="w-40 rounded-l-2xl border border-red-400/70 bg-slate-950/90 px-4 py-4 text-sm font-extrabold text-red-200 shadow-2xl hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Forfeit Match
+          </button>
+
+          <button
+            type="button"
+            onClick={handleRestart}
+            className="w-40 rounded-l-2xl border border-slate-600/70 bg-slate-950/90 px-4 py-2 text-[11px] font-semibold text-slate-200 shadow-xl hover:bg-slate-800"
+          >
+            Restart Battle
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              playSfx("uiClick");
+              setIsMuted((v) => !v);
+            }}
+            className="w-40 rounded-l-2xl border border-slate-700 bg-slate-950/90 px-4 py-2 text-[11px] font-semibold text-slate-200 shadow-xl hover:bg-slate-800"
+          >
+            {isMuted ? "Unmute" : "Mute"}
+          </button>
+        </aside>
 
         {/* Shared pitch */}
         <section className="relative space-y-4 overflow-hidden rounded-3xl border border-emerald-500/60 bg-gradient-to-b from-emerald-900 via-emerald-950 to-emerald-900 p-4">
@@ -2940,19 +3361,13 @@ function BattleMatchInner() {
             >
               <div className="flex flex-col items-center gap-1">
                 <div className="relative h-16 w-16 overflow-hidden rounded-full border border-emerald-400 bg-emerald-700/60 shadow-lg">
-                  <img
-                    src={opponentHeroArt}
-                    alt={battle!.opponent.hero.name}
-                    className="h-full w-full object-cover"
-                  />
+                  <img src={opponentHeroArt} alt={battle!.opponent.hero.name} className="h-full w-full object-cover" />
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-900/10 via-slate-900/40 to-slate-950/70" />
                   <div className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-emerald-400 px-2 py-0.5 text-[9px] font-bold uppercase text-slate-950">
                     GK
                   </div>
                 </div>
-                <p className="text-[11px] font-semibold text-emerald-100">
-                  {battle!.opponent.hero.name}
-                </p>
+                <p className="text-[11px] font-semibold text-emerald-100">{battle!.opponent.hero.name}</p>
               </div>
               <HeroHealth hero={battle!.opponent.hero} />
             </button>
@@ -3004,26 +3419,27 @@ function BattleMatchInner() {
               )}
             </div>
 
-            {/* Player GK */}
-            <div className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-900/50 px-3 py-3 text-center">
+            {/* ✅ CHANGED: Player GK is clickable to use Hero Power */}
+            <button
+              type="button"
+              onClick={handleHeroPowerClick}
+              disabled={!!battle!.winner || battle!.active !== "player" || battle!.player.mana < HERO_POWER_COST}
+              className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-900/50 px-3 py-3 text-center transition hover:border-emerald-300 hover:bg-emerald-800/60 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Hero Power: Draw 2 cards (3 mana)"
+            >
               <div className="flex flex-col items-center gap-1">
                 <div className="relative h-16 w-16 overflow-hidden rounded-full border border-emerald-400 bg-emerald-700/60 shadow-lg">
-                  <img
-                    src={playerHeroArt}
-                    alt={battle!.player.hero.name}
-                    className="h-full w-full object-cover"
-                  />
+                  <img src={playerHeroArt} alt={battle!.player.hero.name} className="h-full w-full object-cover" />
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-900/10 via-slate-900/40 to-slate-950/70" />
                   <div className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-emerald-400 px-2 py-0.5 text-[9px] font-bold uppercase text-slate-950">
                     GK
                   </div>
                 </div>
-                <p className="text-[11px] font-semibold text-emerald-100">
-                  {battle!.player.hero.name}
-                </p>
+                <p className="text-[11px] font-semibold text-emerald-100">{battle!.player.hero.name}</p>
+                <p className="text-[10px] text-emerald-200">Tap GK: Draw 2 (3 Mana)</p>
               </div>
               <HeroHealth hero={battle!.player.hero} />
-            </div>
+            </button>
           </div>
         </section>
 
@@ -3031,12 +3447,7 @@ function BattleMatchInner() {
         <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3">
           <p className="mb-1 text-[11px] text-slate-300">Your hand (Player 1)</p>
           <div className="flex flex-wrap gap-2">
-            {renderHand(
-              battle!.player.hand,
-              battle!.player.mana,
-              !!battle!.winner,
-              (idx) => handlePlayCard(idx)
-            )}
+            {renderHand(battle!.player.hand, battle!.player.mana, !!battle!.winner, (idx) => handlePlayCard(idx))}
           </div>
         </section>
 
@@ -3044,9 +3455,7 @@ function BattleMatchInner() {
         <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3">
           <p className="mb-1 text-[11px] font-semibold text-slate-100">Battle log</p>
           {logView.length === 0 ? (
-            <p className="text-[11px] text-slate-400">
-              Actions will appear here as the battle unfolds.
-            </p>
+            <p className="text-[11px] text-slate-400">Actions will appear here as the battle unfolds.</p>
           ) : (
             <ul className="max-h-40 space-y-0.5 overflow-y-auto text-[11px] text-slate-300">
               {logView.map((entry, idx) => (
@@ -3058,6 +3467,26 @@ function BattleMatchInner() {
           )}
         </section>
       </main>
+
+      {/* ✅ End-of-game overlay (win/lose/draw) + Play Again */}
+      {battle?.winner && (
+        <BattleEndOverlay
+          winner={battle.winner}
+          rewardInfo={rewardInfo}
+          isMuted={isMuted}
+          onToggleMute={() => setIsMuted((v) => !v)}
+          onPlayAgain={handleRestart}
+          onExitToSquad={() => {
+            playSfx("uiClick");
+            stopMusic();
+            setBattle(null);
+            setRewardInfo(null);
+            setSelectedAttacker(null);
+            setPendingSpell(null);
+            setActionMessage(null);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -3069,17 +3498,11 @@ function HeroHealth({ hero }: { hero: HeroState }) {
   return (
     <div className="flex items-center gap-2">
       <div className="flex flex-col items-end">
-        <span className="text-[10px] uppercase tracking-wide text-emerald-100">
-          HP
-        </span>
+        <span className="text-[10px] uppercase tracking-wide text-emerald-100">HP</span>
         <span className="text-sm font-mono font-semibold text-red-300">
           {Math.max(hero.hp, 0)}/{hero.maxHp}
         </span>
-        {hero.armor > 0 && (
-          <span className="text-[10px] font-mono text-sky-300">
-            Armor: {hero.armor}
-          </span>
-        )}
+        {hero.armor > 0 && <span className="text-[10px] font-mono text-sky-300">Armor: {hero.armor}</span>}
       </div>
       <div className="h-3 w-20 overflow-hidden rounded-full border border-emerald-700/80 bg-emerald-900">
         <div className="h-full bg-red-500" style={{ width: `${hpPct}%` }} />
@@ -3145,38 +3568,26 @@ function BattleMonsterCardView(props: {
         owner === "player" ? "hover:-translate-y-1" : "hover:translate-y-1"
       } ${isSelected ? "rounded-2xl ring-2 ring-emerald-400" : ""}`}
     >
-      <div
-        className={`relative h-32 w-24 overflow-hidden rounded-2xl border ${rarityBorder} bg-slate-900 shadow-md`}
-      >
-        {/* Full art */}
+      <div className={`relative h-32 w-24 overflow-hidden rounded-2xl border ${rarityBorder} bg-slate-900 shadow-md`}>
         <img src={artUrl} alt={card.name} className="absolute inset-0 h-full w-full object-cover" />
-
-        {/* Dark gradient */}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-slate-950/10" />
 
-        {/* Position chip */}
         <div className={`absolute left-1 top-1 rounded-full px-2 py-0.5 ${positionColor}`}>
-          <span className="text-[9px] font-semibold uppercase text-slate-50">
-            {card.position}
-          </span>
+          <span className="text-[9px] font-semibold uppercase text-slate-50">{card.position}</span>
         </div>
 
-        {/* ⚽ Ball marker: centered on the card */}
         {card.hasBall && (
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-emerald-300/80 bg-slate-900/95 px-2 py-1 text-[13px] shadow-lg">
             ⚽
           </div>
         )}
 
-        {/* Keywords */}
         <div className="absolute right-1 top-1 flex flex-col items-end gap-0.5">
           {card.keywords.map((kw) => (
             <span
               key={kw}
               className={`rounded-full px-2 py-0.5 text-[9px] uppercase tracking-wide ${
-                kw === "STEALTH"
-                  ? "bg-indigo-900/80 text-indigo-200"
-                  : "bg-slate-900/80 text-emerald-200"
+                kw === "STEALTH" ? "bg-indigo-900/80 text-indigo-200" : "bg-slate-900/80 text-emerald-200"
               }`}
             >
               {kw}
@@ -3184,52 +3595,37 @@ function BattleMonsterCardView(props: {
           ))}
         </div>
 
-        {/* Evo mini text (moved a bit up to avoid bottom row) */}
         {typeof card.evolutionLevel === "number" && card.evolutionLevel > 0 && (
           <div className="absolute bottom-9 left-1/2 -translate-x-1/2 text-center text-[9px] text-slate-200">
             Evo {card.evolutionLevel}
           </div>
         )}
 
-        {/* Bottom row: Attack / Mana / Health */}
         <div className="absolute inset-x-1 bottom-1 flex items-center justify-between gap-1">
-          {/* Attack */}
           <div className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-400/80 bg-emerald-900/90">
             <span className="text-[11px] font-bold text-emerald-300">{attack}</span>
           </div>
 
-          {/* Mana pill (blue) in the bottom middle */}
           <div className="flex min-w-[1.9rem] items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 px-2 shadow">
             <span className="text-[11px] font-bold text-slate-950">{card.manaCost}</span>
           </div>
 
-          {/* Health */}
           <div className="flex h-7 w-7 items-center justify-center rounded-full border border-red-400/80 bg-red-900/90">
             <span className="text-[11px] font-bold text-red-300">{health}</span>
           </div>
         </div>
 
-        {/* Status overlay */}
         {showStatusOverlay && (!canAttackNow || isStunned) && (
           <div className="pointer-events-none absolute inset-0 rounded-2xl bg-slate-950/35">
-            {/* Bottom status pill for states */}
             <div className="absolute inset-x-0 bottom-1 flex justify-center">
               {isStunned ? (
-                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-amber-100">
-                  Stunned
-                </span>
+                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-amber-100">Stunned</span>
               ) : card.hasSummoningSickness ? (
-                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-emerald-100">
-                  Rest
-                </span>
+                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-emerald-100">Rest</span>
               ) : card.position !== "DEF" ? (
-                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-slate-100">
-                  Used
-                </span>
+                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-slate-100">Used</span>
               ) : (
-                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-sky-100">
-                  Wall
-                </span>
+                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] text-sky-100">Wall</span>
               )}
             </div>
           </div>
@@ -3304,32 +3700,22 @@ function renderHand(
             disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:-translate-y-1"
           }`}
         >
-          {/* Full art (no blur) */}
           <img src={artUrl} alt={monster.name} className="absolute inset-0 h-full w-full object-cover" />
-
-          {/* Dark gradient */}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-slate-950/10" />
 
-          {/* Position chip */}
           <div className={`absolute left-1 top-1 rounded-full px-2 py-0.5 ${positionColor}`}>
-            <span className="text-[9px] font-semibold uppercase text-slate-50">
-              {monster.position}
-            </span>
+            <span className="text-[9px] font-semibold uppercase text-slate-50">{monster.position}</span>
           </div>
 
-          {/* Bottom row: attack / mana / health */}
           <div className="absolute inset-x-1 bottom-1 flex items-center justify-between gap-1">
-            {/* Attack */}
             <div className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-400/80 bg-emerald-900/90">
               <span className="text-[11px] font-bold text-emerald-300">{monster.attack}</span>
             </div>
 
-            {/* Mana (same position as on-board card) */}
             <div className="flex min-w-[1.9rem] items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 px-2 shadow">
               <span className="text-[11px] font-bold text-slate-950">{monster.manaCost}</span>
             </div>
 
-            {/* Health */}
             <div className="flex h-7 w-7 items-center justify-center rounded-full border border-red-400/80 bg-red-900/90">
               <span className="text-[11px] font-bold text-red-300">{monster.health}</span>
             </div>
@@ -3338,7 +3724,6 @@ function renderHand(
       );
     }
 
-    // ---- SPELL CARD (graphic + mana only; name + description on hover) ----
     const spell = card as BattleSpellCard;
     const artUrl = spell.artUrl || "/cards/base/test.png";
 
@@ -3352,20 +3737,13 @@ function renderHand(
             disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:-translate-y-1"
           }`}
         >
-          {/* Full art (no blur) */}
           <img src={artUrl} alt={spell.name} className="absolute inset-0 h-full w-full object-cover" />
-
-          {/* Gradient for readability */}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-slate-950/10" />
 
-          {/* Small "Spell" tag in top-left */}
           <div className="absolute left-1 top-1 rounded-full bg-indigo-600/90 px-2 py-0.5">
-            <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-50">
-              Spell
-            </span>
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-50">Spell</span>
           </div>
 
-          {/* BOTTOM: mana pill centered (same as monster cards) */}
           <div className="absolute inset-x-1 bottom-1 flex items-center justify-center">
             <div className="flex min-w-[1.9rem] items-center justify-center rounded-full border border-sky-300/80 bg-sky-500 px-2 shadow">
               <span className="text-[11px] font-bold text-slate-950">{spell.manaCost}</span>
@@ -3373,7 +3751,6 @@ function renderHand(
           </div>
         </button>
 
-        {/* HOVER TOOLTIP with name + description (no name on the card itself) */}
         <div className="pointer-events-none absolute -top-1 left-1/2 z-20 hidden w-56 -translate-x-1/2 -translate-y-full flex-col rounded-xl border border-slate-700 bg-slate-950/95 p-2 text-left shadow-xl group-hover:flex">
           <p className="text-[11px] font-semibold text-indigo-100">{spell.name}</p>
           <p className="mt-1 text-[10px] text-slate-200">{spell.description}</p>
@@ -3439,22 +3816,14 @@ function DeckSelectionCard(props: {
           : "cursor-pointer hover:-translate-y-1 hover:border-emerald-400"
       }`}
     >
-      {/* Art */}
       <div className="relative h-20 w-16 overflow-hidden rounded-xl">
-        <img
-          src={artUrl}
-          alt={monster.displayName || monster.realPlayerName}
-          className="h-full w-full object-cover"
-        />
+        <img src={artUrl} alt={monster.displayName || monster.realPlayerName} className="h-full w-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/30 to-slate-950/10" />
         <div className={`absolute left-1 top-1 rounded-full px-2 py-0.5 ${positionColor}`}>
-          <span className="text-[9px] font-semibold uppercase text-slate-50">
-            {monster.position}
-          </span>
+          <span className="text-[9px] font-semibold uppercase text-slate-50">{monster.position}</span>
         </div>
       </div>
 
-      {/* Info */}
       <div className="flex min-w-0 flex-1 flex-col justify-between">
         <div className="space-y-0.5">
           <p className="truncate text-[12px] font-semibold text-slate-100">
@@ -3466,33 +3835,119 @@ function DeckSelectionCard(props: {
           </p>
         </div>
         <div className="mt-1 flex items-center justify-between text-[10px]">
-          <span className="rounded-full bg-slate-800/90 px-2 py-0.5 text-slate-200">
-            {monster.rarity}
-          </span>
+          <span className="rounded-full bg-slate-800/90 px-2 py-0.5 text-slate-200">{monster.rarity}</span>
           {typeof monster.evolutionLevel === "number" && monster.evolutionLevel > 0 && (
-            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-emerald-200">
-              Evo {monster.evolutionLevel}
-            </span>
+            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-emerald-200">Evo {monster.evolutionLevel}</span>
           )}
         </div>
       </div>
 
-      {/* Selection pill */}
       <div className="absolute right-2 top-2">
         {selected ? (
           <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-semibold text-slate-950">
             In XI
           </span>
         ) : monster.position === "GK" ? (
-          <span className="rounded-full bg-emerald-900/80 px-2 py-0.5 text-[9px] text-emerald-200">
-            GK (hero only)
-          </span>
+          <span className="rounded-full bg-emerald-900/80 px-2 py-0.5 text-[9px] text-emerald-200">GK (hero only)</span>
         ) : (
-          <span className="rounded-full bg-slate-800/80 px-2 py-0.5 text-[9px] text-slate-200">
-            Tap to add
-          </span>
+          <span className="rounded-full bg-slate-800/80 px-2 py-0.5 text-[9px] text-slate-200">Tap to add</span>
         )}
       </div>
     </button>
+  );
+}
+
+function BattleEndOverlay(props: {
+  winner: PlayerKey | "DRAW";
+  rewardInfo: {
+    requested: number;
+    granted: number;
+    capRemaining: number;
+    status: "IDLE" | "GRANTED" | "ERROR";
+    message?: string;
+  } | null;
+  isMuted: boolean;
+  onToggleMute: () => void;
+  onPlayAgain: () => void;
+  onExitToSquad: () => void;
+}) {
+  const { winner, rewardInfo, isMuted, onToggleMute, onPlayAgain, onExitToSquad } = props;
+
+  const title =
+    winner === "DRAW" ? "Draw" : winner === "player" ? "You win!" : "You lose";
+
+  const rewardLine =
+    winner === "player"
+      ? `+${SINGLE_WIN_COINS} coins (single-player win)`
+      : winner === "DRAW"
+      ? `+${SINGLE_DRAW_COINS} coins (draw)`
+      : `No coins for a loss`;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4">
+      <div className="w-full max-w-md rounded-3xl border border-emerald-500/40 bg-slate-950/90 p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-extrabold text-emerald-200">{title}</h2>
+            <p className="mt-1 text-[12px] text-slate-300">{rewardLine}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleMute}
+            className="rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-800"
+          >
+            {isMuted ? "Unmute" : "Mute"}
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-2 rounded-2xl border border-slate-800 bg-slate-900/40 p-3">
+          <p className="text-[11px] text-slate-200">
+            Daily cap (single-player): <span className="font-mono font-semibold">{SINGLE_DAILY_COIN_CAP}</span> coins
+          </p>
+          <p className="text-[11px] text-slate-200">
+            Remaining today:{" "}
+            <span className="font-mono font-semibold">
+              {rewardInfo ? rewardInfo.capRemaining : "…"}
+            </span>
+          </p>
+
+          {winner !== "opponent" && (
+            <p className="text-[11px] text-emerald-200">
+              Awarded:{" "}
+              <span className="font-mono font-semibold">
+                {rewardInfo ? rewardInfo.granted : "…"}
+              </span>{" "}
+              coins
+              {rewardInfo?.message ? (
+                <span className="ml-2 text-[11px] text-amber-200">({rewardInfo.message})</span>
+              ) : null}
+            </p>
+          )}
+
+          {rewardInfo?.status === "ERROR" && (
+            <p className="text-[11px] text-red-300">
+              Server sync failed — check /api/me/coins/earn (local cap tracking still applied).
+            </p>
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onExitToSquad}
+            className="rounded-2xl border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+          >
+            Change XI
+          </button>
+          <button
+            type="button"
+            onClick={onPlayAgain}
+            className="rounded-2xl border border-emerald-400 bg-emerald-400 px-4 py-2 text-sm font-extrabold text-slate-950 hover:bg-emerald-300"
+          >
+            Play Again
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
