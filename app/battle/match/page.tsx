@@ -262,48 +262,39 @@ function clearBallOnBoard(board: BattleMonsterCard[]): BattleMonsterCard[] {
   return board.map((m) => ({ ...m, hasBall: false }));
 }
 
-function setBallOnBoard(
-  board: BattleMonsterCard[],
-  indexWithBall: number
-): BattleMonsterCard[] {
+function setBallOnBoard(board: BattleMonsterCard[], indexWithBall: number): BattleMonsterCard[] {
   return board.map((m, idx) => ({ ...m, hasBall: idx === indexWithBall }));
 }
 
 /**
- * ✅ NEW: Power curve boost for higher mana cost / rarity cards.
+ * ✅ UPDATED: Power curve boost for higher mana cost / rarity cards.
+ * Make boosts NOTICEABLE at your current stat scale (e.g. 90/40).
  * Higher mana = stronger in BOTH attack and health.
- * (Common stays baseline; Rare+ get progressively larger boosts.)
  */
 function boostStatsForManaCost(
   attack: number,
   health: number,
   manaCost: number
 ): { attack: number; health: number } {
-  // Tuned, simple curve that keeps lower costs relevant while rewarding higher costs.
-  // You can tweak these numbers later without touching engine logic.
-  const table: Record<number, { atk: number; hp: number }> = {
-    1: { atk: 0, hp: 0 }, // COMMON
-    2: { atk: 1, hp: 2 }, // RARE
-    3: { atk: 2, hp: 4 }, // EPIC
-    4: { atk: 3, hp: 6 }, // LEGENDARY
-    5: { atk: 4, hp: 8 }, // MYTHIC
-  };
+  const tier = Math.max(0, Math.min(4, manaCost - 1)); // 0..4
+  if (tier <= 0) return { attack, health };
 
-  const bump = table[manaCost] ?? { atk: 0, hp: 0 };
+  // Noticeable curve:
+  // - multiplicative bump so it scales with big stat numbers
+  // - plus a small flat bump so low stats still feel it
+  const atkMult = 1 + tier * 0.08; // up to +32%
+  const hpMult = 1 + tier * 0.10; // up to +40%
+  const atkFlat = tier * 2; // up to +8
+  const hpFlat = tier * 4; // up to +16
+
   return {
-    attack: attack + bump.atk,
-    health: health + bump.hp,
+    attack: Math.max(0, Math.round(attack * atkMult + atkFlat)),
+    health: Math.max(1, Math.round(health * hpMult + hpFlat)),
   };
 }
 
 /**
- * ✅ NEW: Normalize ball state so it can NEVER "disappear".
- * Rules:
- * - If ballAtCenter === true → nobody has the ball.
- * - If ballAtCenter === false → exactly ONE monster on the pitch has the ball.
- *   - If none have it: randomly assign to any monster on the pitch (across both sides).
- *   - If multiple have it: keep one, clear the rest.
- * - If there are no monsters on the pitch: ball returns to center.
+ * ✅ Normalize ball state so it can NEVER "disappear".
  */
 function normalizeBallState(
   ballAtCenter: boolean,
@@ -369,7 +360,7 @@ function normalizeBallState(
     };
   }
 
-  // holders.length === 0 → ball would "disappear" unless we assign it
+  // holders.length === 0 → assign randomly if anyone is on pitch, else center
   const total = nextPlayer.length + nextOpponent.length;
 
   if (total === 0) {
@@ -425,7 +416,7 @@ function buildMonsterCard(m: UserMonsterDTO): BattleMonsterCard {
     Math.floor(m.evolutionLevel / 2) +
     (rarityTier === "MYTHIC" ? 3 : 0);
 
-  // ✅ NEW: Boost higher-mana (rare/epic/legendary/mythic) stats
+  // ✅ UPDATED: Noticeable boost for higher-mana (rare/epic/legendary/mythic)
   {
     const boosted = boostStatsForManaCost(attack, health, manaCost);
     attack = boosted.attack;
@@ -436,7 +427,6 @@ function buildMonsterCard(m: UserMonsterDTO): BattleMonsterCard {
 
   const keywords: Keyword[] = [];
   if (m.position === "DEF") {
-    // Defenders act as a wall; keep TAUNT keyword for rules that care.
     keywords.push("TAUNT");
   }
   if (m.position === "FWD") {
@@ -463,7 +453,7 @@ function buildMonsterCard(m: UserMonsterDTO): BattleMonsterCard {
     hasSummoningSickness: true,
     canAttack: false,
     stunnedForTurns: 0,
-    hasBall: false, // default, ball starts in center
+    hasBall: false,
 
     displayName: m.displayName,
     realPlayerName: m.realPlayerName,
@@ -491,19 +481,8 @@ function buildHeroFromGK(gk: UserMonsterDTO): HeroState {
   };
 }
 
-/**
- * SPELL ART:
- * Place PNGs like:
- *  /public/cards/spells/power-shot.png
- *  /public/cards/spells/rooted-shield.png
- *  /public/cards/spells/tackle-forward.png
- * etc.
- * These paths are referenced below in artUrl.
- */
-
 function createSpellCards(): BattleSpellCard[] {
   const base: Omit<BattleSpellCard, "id">[] = [
-    // 2 mana – big GK damage
     {
       kind: "SPELL",
       name: "Power Shot",
@@ -513,7 +492,6 @@ function createSpellCards(): BattleSpellCard[] {
       value: 25,
       artUrl: "/cards/spells/power-shot.png",
     },
-    // 3 mana – GK heal
     {
       kind: "SPELL",
       name: "Rooted Shield",
@@ -523,7 +501,6 @@ function createSpellCards(): BattleSpellCard[] {
       value: 30,
       artUrl: "/cards/spells/rooted-shield.png",
     },
-    // 3 mana – stun a forward (in code we pick an enemy FWD)
     {
       kind: "SPELL",
       name: "Tackle Forward",
@@ -531,10 +508,9 @@ function createSpellCards(): BattleSpellCard[] {
         "Pick off an opponent’s Forward – it can’t attack on its next turn.",
       manaCost: 3,
       effect: "FORWARD_STUN",
-      value: 1, // 1 turn of stun
+      value: 1,
       artUrl: "/cards/spells/tackle-forward.png",
     },
-    // More GK damage variants
     {
       kind: "SPELL",
       name: "Long Range Strike",
@@ -555,7 +531,6 @@ function createSpellCards(): BattleSpellCard[] {
       value: 45,
       artUrl: "/cards/spells/overload-shot.png",
     },
-    // Armor / shield variants
     {
       kind: "SPELL",
       name: "Iron Wall",
@@ -572,7 +547,7 @@ function createSpellCards(): BattleSpellCard[] {
         "Back-to-back reflex saves. Gain 15 armor and heal 10 health on your Goalkeeper.",
       manaCost: 3,
       effect: "SHIELD_HERO",
-      value: 25, // we split in code as 15 armor + 10 heal
+      value: 25,
       artUrl: "/cards/spells/double-save.png",
     },
     {
@@ -584,7 +559,6 @@ function createSpellCards(): BattleSpellCard[] {
       value: 40,
       artUrl: "/cards/spells/miracle-hands.png",
     },
-    // Draw spells
     {
       kind: "SPELL",
       name: "Fan Momentum",
@@ -612,8 +586,6 @@ function createSpellCards(): BattleSpellCard[] {
       value: 3,
       artUrl: "/cards/spells/coachs-whisper.png",
     },
-
-    // ✅ NEW: STEALTH (replaces "Quick Bandage" but keeps the same artwork)
     {
       kind: "SPELL",
       name: "Stealth",
@@ -624,8 +596,6 @@ function createSpellCards(): BattleSpellCard[] {
       value: 0,
       artUrl: "/cards/spells/quick-bandage.png",
     },
-
-    // Small buffs / sustain
     {
       kind: "SPELL",
       name: "Last-Minute Surge",
@@ -633,11 +603,9 @@ function createSpellCards(): BattleSpellCard[] {
         "Late-game push. Heal 20 HP and gain 10 armor on your Goalkeeper.",
       manaCost: 4,
       effect: "SHIELD_HERO",
-      value: 30, // 20 heal + 10 armor
+      value: 30,
       artUrl: "/cards/spells/last-minute-surge.png",
     },
-
-    // ✅ NEW: KILL A MONSTER (replaces "Crowd Shield" but keeps the same artwork)
     {
       kind: "SPELL",
       name: "Red Card",
@@ -716,7 +684,6 @@ function autoPickForFormation(
   addTop(byPos("MID"), formation.mid);
   addTop(byPos("FWD"), formation.fwd);
 
-  // If we're still short of 10 outfield, fill with best remaining
   if (chosenIds.length < OUTFIELD_REQUIRED) {
     const remaining = outfieldPool
       .filter((m) => !chosenIds.includes(m.id))
@@ -800,6 +767,80 @@ function findDefenderIndices(board: BattleMonsterCard[]): number[] {
   return indices;
 }
 
+/**
+ * ✅ NEW: Core pass helper (used by both player and AI) so AI can pass properly.
+ * Costs PASS_MANA_COST mana for the passing side.
+ */
+function passBall(
+  state: BattleState,
+  owner: PlayerKey,
+  fromIndex: number,
+  toIndex: number
+): BattleState {
+  if (state.winner) return state;
+
+  const acting = owner === "player" ? state.player : state.opponent;
+  const other = owner === "player" ? state.opponent : state.player;
+
+  if (acting.mana < PASS_MANA_COST) return state;
+  if (!acting.board[fromIndex] || !acting.board[toIndex]) return state;
+  if (fromIndex === toIndex) return state;
+
+  const passer = acting.board[fromIndex];
+  const receiver = acting.board[toIndex];
+  if (!passer.hasBall) return state;
+
+  const newActing: PlayerState = {
+    ...acting,
+    mana: Math.max(0, acting.mana - PASS_MANA_COST),
+    board: acting.board.map((m, idx) => {
+      if (idx === fromIndex) return { ...m, hasBall: false };
+      if (idx === toIndex) return { ...m, hasBall: true };
+      return { ...m, hasBall: false };
+    }),
+  };
+
+  const newOther: PlayerState = {
+    ...other,
+    board: other.board.map((m) => ({ ...m, hasBall: false })),
+  };
+
+  let next: BattleState =
+    owner === "player"
+      ? {
+          ...state,
+          player: newActing,
+          opponent: newOther,
+          ballAtCenter: false,
+          log: [...state.log, `${acting.label}'s ${passer.name} passed the ball to ${receiver.name}.`],
+        }
+      : {
+          ...state,
+          opponent: newActing,
+          player: newOther,
+          ballAtCenter: false,
+          log: [...state.log, `${acting.label}'s ${passer.name} passed the ball to ${receiver.name}.`],
+        };
+
+  // Extra safety
+  const normalized = normalizeBallState(
+    next.ballAtCenter,
+    next.player.board,
+    next.opponent.board,
+    next.log
+  );
+
+  next = {
+    ...next,
+    ballAtCenter: normalized.ballAtCenter,
+    player: { ...next.player, board: normalized.playerBoard },
+    opponent: { ...next.opponent, board: normalized.opponentBoard },
+    log: normalized.log,
+  };
+
+  return next;
+}
+
 function resolveBallAfterRemoval(
   state: BattleState,
   _removedOwner: PlayerKey,
@@ -814,7 +855,6 @@ function resolveBallAfterRemoval(
   log: string[];
 } {
   if (!removedHadBall) {
-    // still normalize (cheap safety), but keep center flag as-is
     const normalized = normalizeBallState(
       state.ballAtCenter,
       nextPlayerBoard,
@@ -824,7 +864,6 @@ function resolveBallAfterRemoval(
     return normalized;
   }
 
-  // Ball becomes loose: clear it and re-assign randomly across the pitch.
   const clearedPlayer = clearBallOnBoard(nextPlayerBoard);
   const clearedOpponent = clearBallOnBoard(nextOpponentBoard);
 
@@ -869,11 +908,9 @@ function applyAttack(
   const defenderIndices = findDefenderIndices(defenderPlayer.board);
   const hasDefenders = defenderIndices.length > 0;
 
-  // If attacker is stealthed and performs an attack, stealth breaks.
   const attackerHadStealth = hasKeyword(attacker, "STEALTH");
 
   if (targetType === "HERO") {
-    // Only the monster with the ball can shoot the Goalkeeper
     if (!attacker.hasBall) {
       log.push(
         `${attackerPlayer.label}'s ${attacker.name} tried to shoot the Goalkeeper but does not have the ball.`
@@ -884,7 +921,6 @@ function applyAttack(
       };
     }
 
-    // If defenders are in play, you CANNOT hit the Goalkeeper.
     if (hasDefenders) {
       log.push(
         `${attackerPlayer.label}'s ${attacker.name} tried to attack the Goalkeeper, but defenders are still in play and must be cleared first.`
@@ -895,7 +931,6 @@ function applyAttack(
       };
     }
 
-    // Simple hero-shot logic: attacker damages GK, no defender retaliation.
     let remainingDamage = attacker.attack;
 
     if (newDefenderHero.armor > 0) {
@@ -911,8 +946,6 @@ function applyAttack(
       `${attackerPlayer.label}'s ${attacker.name} hit ${defenderPlayer.label}'s GK for ${attacker.attack} damage`
     );
 
-    // Midfielder attacking the Goalkeeper deals damage but is killed,
-    // and if they had the ball it goes to a random monster on the defender's team.
     if (attacker.position === "MID") {
       const midfielderHadBall = !!attacker.hasBall;
 
@@ -920,11 +953,9 @@ function applyAttack(
         `${attackerPlayer.label}'s ${attacker.name} is a Midfielder and is removed from play after the shot.`
       );
 
-      // Remove the MID from the attacker board
       newAttackerBoard.splice(attackerIndex, 1);
 
       if (midfielderHadBall) {
-        // Ball becomes loose: normalize will assign to a random monster on the pitch (not GK).
         nextBallAtCenter = false;
         newAttackerBoard = clearBallOnBoard(newAttackerBoard);
         newDefenderBoard = clearBallOnBoard(newDefenderBoard);
@@ -937,7 +968,6 @@ function applyAttack(
       };
     }
 
-    // Break stealth after attacking (if attacker still exists)
     if (attackerHadStealth) {
       attacker = removeKeyword(attacker, "STEALTH");
     }
@@ -948,7 +978,6 @@ function applyAttack(
   ) {
     const target = defenderPlayer.board[targetIndex];
 
-    // Stealth targets can't be attacked
     if (hasKeyword(target, "STEALTH")) {
       log.push(
         `${attackerPlayer.label} tried to attack ${defenderPlayer.label}'s ${target.name}, but it is in Stealth.`
@@ -959,7 +988,6 @@ function applyAttack(
       };
     }
 
-    // If defenders exist, you MUST attack a defender.
     if (hasDefenders && target.position !== "DEF") {
       log.push(
         `${attackerPlayer.label}'s ${attacker.name} must attack a defender while any defenders are on the pitch.`
@@ -970,7 +998,6 @@ function applyAttack(
       };
     }
 
-    // Minion vs minion trade (with special FWD vs Taunt rule)
     let newAttacker = { ...attacker };
     let newTarget = { ...target };
 
@@ -979,7 +1006,6 @@ function applyAttack(
 
     newTarget.health -= attacker.attack;
 
-    // Forwards hitting Taunt don't take return damage
     if (!(attackerIsForward && targetHasTaunt)) {
       newAttacker.health -= target.attack;
     } else {
@@ -992,18 +1018,16 @@ function applyAttack(
       `${attackerPlayer.label}'s ${attacker.name} traded with ${defenderPlayer.label}'s ${target.name}`
     );
 
-    const attackerHadBall = !!attacker.hasBall;
+    const attackerHadBall2 = !!attacker.hasBall;
     const targetHadBall = !!target.hasBall;
 
     const attackerDies = newAttacker.health <= 0;
     const targetDies = newTarget.health <= 0;
 
-    // Break stealth if attacker performed an attack and survives
     if (attackerHadStealth && !attackerDies) {
       newAttacker = removeKeyword(newAttacker, "STEALTH");
     }
 
-    // Apply health/death to boards
     if (targetDies) {
       newDefenderBoard.splice(targetIndex, 1);
     } else {
@@ -1023,73 +1047,49 @@ function applyAttack(
     }
 
     // ⚽ Ball transfer logic for minion combat
-    // ✅ FIX: If BOTH die and the ball was involved, it becomes "loose" and MUST be re-assigned
-    // to a random monster on the pitch (not GK). If nobody is on the pitch, it goes to center.
     if (targetHadBall) {
       if (attackerDies && !targetDies) {
-        // Target survives and had the ball: keep it
         if (!targetDies && newDefenderBoard[targetIndex]) {
           const updated = newDefenderBoard[targetIndex];
           newDefenderBoard[targetIndex] = { ...updated, hasBall: true };
         }
-        newAttackerBoard = newAttackerBoard.map((c) => ({
-          ...c,
-          hasBall: false,
-        }));
+        newAttackerBoard = newAttackerBoard.map((c) => ({ ...c, hasBall: false }));
         nextBallAtCenter = false;
       } else if (!attackerDies && targetDies) {
-        // Attacker survives, gains the ball
-        const updatedIndex = newAttackerBoard.findIndex(
-          (c) => c.id === attacker.id
-        );
+        const updatedIndex = newAttackerBoard.findIndex((c) => c.id === attacker.id);
         if (updatedIndex >= 0) {
           newAttackerBoard = newAttackerBoard.map((c, idx) => ({
             ...c,
             hasBall: idx === updatedIndex,
           }));
-          newDefenderBoard = newDefenderBoard.map((c) => ({
-            ...c,
-            hasBall: false,
-          }));
+          newDefenderBoard = newDefenderBoard.map((c) => ({ ...c, hasBall: false }));
         }
         nextBallAtCenter = false;
       } else if (attackerDies && targetDies) {
-        // ✅ BOTH DIE with ball involved → ball becomes loose (random across pitch via normalization)
         newAttackerBoard = clearBallOnBoard(newAttackerBoard);
         newDefenderBoard = clearBallOnBoard(newDefenderBoard);
         nextBallAtCenter = false;
         log.push("Both monsters go down — the ball pops loose!");
       }
-    } else if (attackerHadBall) {
+    } else if (attackerHadBall2) {
       if (attackerDies && !targetDies) {
-        // Attacker dies, target survives: target takes the ball
         if (!targetDies && newDefenderBoard[targetIndex]) {
           const updated = newDefenderBoard[targetIndex];
           newDefenderBoard[targetIndex] = { ...updated, hasBall: true };
         }
-        newAttackerBoard = newAttackerBoard.map((c) => ({
-          ...c,
-          hasBall: false,
-        }));
+        newAttackerBoard = newAttackerBoard.map((c) => ({ ...c, hasBall: false }));
         nextBallAtCenter = false;
       } else if (!attackerDies) {
-        // Attacker survives, keeps the ball
-        const updatedIndex = newAttackerBoard.findIndex(
-          (c) => c.id === attacker.id
-        );
+        const updatedIndex = newAttackerBoard.findIndex((c) => c.id === attacker.id);
         if (updatedIndex >= 0) {
           newAttackerBoard = newAttackerBoard.map((c, idx) => ({
             ...c,
             hasBall: idx === updatedIndex,
           }));
-          newDefenderBoard = newDefenderBoard.map((c) => ({
-            ...c,
-            hasBall: false,
-          }));
+          newDefenderBoard = newDefenderBoard.map((c) => ({ ...c, hasBall: false }));
         }
         nextBallAtCenter = false;
       } else if (attackerDies && targetDies) {
-        // ✅ BOTH DIE with ball involved → ball becomes loose (random across pitch via normalization)
         newAttackerBoard = clearBallOnBoard(newAttackerBoard);
         newDefenderBoard = clearBallOnBoard(newDefenderBoard);
         nextBallAtCenter = false;
@@ -1099,9 +1099,7 @@ function applyAttack(
   }
 
   // Mark attacker as used if still alive on board
-  const updatedAttackerIndex = newAttackerBoard.findIndex(
-    (c) => c.id === attacker.id
-  );
+  const updatedAttackerIndex = newAttackerBoard.findIndex((c) => c.id === attacker.id);
   if (updatedAttackerIndex >= 0) {
     newAttackerBoard[updatedAttackerIndex] = {
       ...attacker,
@@ -1123,10 +1121,8 @@ function applyAttack(
 
   let next: BattleState = {
     ...state,
-    player:
-      attackerOwner === "player" ? updatedAttackerPlayer : updatedDefenderPlayer,
-    opponent:
-      attackerOwner === "player" ? updatedDefenderPlayer : updatedAttackerPlayer,
+    player: attackerOwner === "player" ? updatedAttackerPlayer : updatedDefenderPlayer,
+    opponent: attackerOwner === "player" ? updatedDefenderPlayer : updatedAttackerPlayer,
     log,
     ballAtCenter: nextBallAtCenter,
   };
@@ -1171,18 +1167,14 @@ function giveBallToMonster(
   const newPlayerBoard =
     owner === "player"
       ? state.player.board.map((m) =>
-          m.id === monsterId
-            ? { ...m, hasBall: true }
-            : { ...m, hasBall: false }
+          m.id === monsterId ? { ...m, hasBall: true } : { ...m, hasBall: false }
         )
       : state.player.board.map((m) => ({ ...m, hasBall: false }));
 
   const newOpponentBoard =
     owner === "opponent"
       ? state.opponent.board.map((m) =>
-          m.id === monsterId
-            ? { ...m, hasBall: true }
-            : { ...m, hasBall: false }
+          m.id === monsterId ? { ...m, hasBall: true } : { ...m, hasBall: false }
         )
       : state.opponent.board.map((m) => ({ ...m, hasBall: false }));
 
@@ -1284,7 +1276,6 @@ function playTargetedSpellFromHand(
       newActing.board = resolved.playerBoard;
       newOther.board = resolved.opponentBoard;
     } else {
-      // swapped ownership
       newOther.board = resolved.playerBoard;
       newActing.board = resolved.opponentBoard;
     }
@@ -1307,7 +1298,7 @@ function playTargetedSpellFromHand(
           ballAtCenter: nextBallAtCenter,
         };
 
-  // ✅ Normalize ball state (extra safety)
+  // ✅ Normalize ball state
   const normalized = normalizeBallState(
     nextState.ballAtCenter,
     nextState.player.board,
@@ -1337,19 +1328,14 @@ function playCardFromHand(
   if (!card) return state;
   if (card.manaCost > acting.mana) return state;
 
-  // Global rule: max 3 monsters on board per side
   if (card.kind === "MONSTER" && acting.board.length >= 3) {
     const log = [
       ...state.log,
       `${acting.label} tried to play ${card.name} but already has the maximum 3 monsters on the pitch.`,
     ];
-    return {
-      ...state,
-      log,
-    };
+    return { ...state, log };
   }
 
-  // Forwards can only be played if you already have a MID on board
   if (card.kind === "MONSTER" && card.position === "FWD") {
     const hasMidfielder = acting.board.some((m) => m.position === "MID");
     if (!hasMidfielder) {
@@ -1357,10 +1343,7 @@ function playCardFromHand(
         ...state.log,
         `${acting.label} tried to play a Forward but has no Midfielder on the pitch.`,
       ];
-      return {
-        ...state,
-        log,
-      };
+      return { ...state, log };
     }
   }
 
@@ -1375,7 +1358,6 @@ function playCardFromHand(
     const hasSummoningSickness = !card.keywords.includes("RUSH");
     const canAttack = card.position !== "DEF" && card.keywords.includes("RUSH");
 
-    // First monster to hit the pitch gets the ball if it's still in the center
     const isFirstToBall =
       state.ballAtCenter &&
       !anyCardHasBall(state) &&
@@ -1392,9 +1374,7 @@ function playCardFromHand(
 
     if (isFirstToBall) {
       nextBallAtCenter = false;
-      log.push(
-        `${acting.label}'s ${monster.name} takes first touch and gains the ball.`
-      );
+      log.push(`${acting.label}'s ${monster.name} takes first touch and gains the ball.`);
     } else {
       log.push(`${acting.label} played ${monster.name} (${monster.position})`);
     }
@@ -1408,40 +1388,21 @@ function playCardFromHand(
           targetHero.armor -= absorbed;
           remaining -= absorbed;
         }
-        if (remaining > 0) {
-          targetHero.hp -= remaining;
-        }
-        log.push(
-          `${acting.label} cast ${card.name} for ${card.value} damage to the Goalkeeper`
-        );
-        newOther = {
-          ...newOther,
-          hero: targetHero,
-        };
+        if (remaining > 0) targetHero.hp -= remaining;
+        log.push(`${acting.label} cast ${card.name} for ${card.value} damage to the Goalkeeper`);
+        newOther = { ...newOther, hero: targetHero };
         break;
       }
       case "HEAL_HERO": {
-        const healedHp = Math.min(
-          newActing.hero.maxHp,
-          newActing.hero.hp + card.value
-        );
-        newActing = {
-          ...newActing,
-          hero: { ...newActing.hero, hp: healedHp },
-        };
-        log.push(
-          `${acting.label} cast ${card.name} and healed ${card.value} HP on their Goalkeeper`
-        );
+        const healedHp = Math.min(newActing.hero.maxHp, newActing.hero.hp + card.value);
+        newActing = { ...newActing, hero: { ...newActing.hero, hp: healedHp } };
+        log.push(`${acting.label} cast ${card.name} and healed ${card.value} HP on their Goalkeeper`);
         break;
       }
       case "SHIELD_HERO": {
-        // For SHIELD_HERO we treat value as a mix of armor and heal depending on magnitude
         const armorGain = Math.floor(card.value * 0.6);
         const healGain = card.value - armorGain;
-        const healedHp = Math.min(
-          newActing.hero.maxHp,
-          newActing.hero.hp + healGain
-        );
+        const healedHp = Math.min(newActing.hero.maxHp, newActing.hero.hp + healGain);
         newActing = {
           ...newActing,
           hero: {
@@ -1460,14 +1421,10 @@ function playCardFromHand(
           .map((m, idx) => ({ m, idx }))
           .filter(({ m }) => m.position === "FWD");
         if (forwards.length === 0) {
-          log.push(
-            `${acting.label} cast ${card.name} but there were no enemy Forwards to tackle.`
-          );
+          log.push(`${acting.label} cast ${card.name} but there were no enemy Forwards to tackle.`);
         } else {
-          // Pick the highest-attack Forward as the "selected" one
           forwards.sort((a, b) => b.m.attack - a.m.attack);
-          const targetInfo = forwards[0];
-          const targetIdx = targetInfo.idx;
+          const targetIdx = forwards[0].idx;
           const target = { ...newOther.board[targetIdx] };
           const currentStun = target.stunnedForTurns ?? 0;
           target.stunnedForTurns = currentStun + card.value;
@@ -1483,28 +1440,19 @@ function playCardFromHand(
       }
       case "DRAW_CARDS": {
         let tempActing = { ...newActing };
-        for (let i = 0; i < card.value; i++) {
-          tempActing = drawCard(tempActing);
-        }
+        for (let i = 0; i < card.value; i++) tempActing = drawCard(tempActing);
         newActing = tempActing;
-        log.push(
-          `${acting.label} cast ${card.name} and drew ${card.value} extra card(s)`
-        );
+        log.push(`${acting.label} cast ${card.name} and drew ${card.value} extra card(s)`);
         break;
       }
-
-      // ✅ NEW (AI-safe): if this path is hit (opponent AI), auto-target.
       case "STEALTH_MINION": {
         const candidates = newActing.board
           .map((m, idx) => ({ m, idx }))
           .filter(({ m }) => m.position === "MID" || m.position === "FWD");
 
         if (candidates.length === 0) {
-          log.push(
-            `${acting.label} cast ${card.name}, but had no MID/FWD to put into Stealth.`
-          );
+          log.push(`${acting.label} cast ${card.name}, but had no MID/FWD to put into Stealth.`);
         } else {
-          // Prefer ball-holder, else highest attack
           const ballIdx = newActing.board.findIndex((m) => m.hasBall);
           let chosenIdx = candidates[0].idx;
           if (ballIdx >= 0) {
@@ -1518,21 +1466,16 @@ function playCardFromHand(
           const target = newActing.board[chosenIdx];
           newActing.board = [...newActing.board];
           newActing.board[chosenIdx] = addKeyword(target, "STEALTH");
-
           log.push(`${acting.label} cast ${card.name}. ${target.name} enters Stealth.`);
         }
         break;
       }
-
       case "KILL_MINION": {
         if (newOther.board.length === 0) {
-          log.push(
-            `${acting.label} cast ${card.name}, but there were no monsters to destroy.`
-          );
+          log.push(`${acting.label} cast ${card.name}, but there were no monsters to destroy.`);
           break;
         }
 
-        // Prefer killing ball-holder; else highest attack
         const ballIdx = newOther.board.findIndex((m) => m.hasBall);
         let targetIdx = ballIdx >= 0 ? ballIdx : 0;
 
@@ -1551,7 +1494,6 @@ function playCardFromHand(
 
         log.push(`${acting.label} cast ${card.name} and destroyed ${victim.name}.`);
 
-        // Ball handling if victim had ball (random across pitch)
         const resolved = resolveBallAfterRemoval(
           state,
           playerKey === "player" ? "opponent" : "player",
@@ -1576,25 +1518,11 @@ function playCardFromHand(
       }
     }
 
-    // After any spell, check if someone died
     let nextAfterSpell: BattleState =
       playerKey === "player"
-        ? {
-            ...state,
-            player: newActing,
-            opponent: newOther,
-            log,
-            ballAtCenter: nextBallAtCenter,
-          }
-        : {
-            ...state,
-            opponent: newActing,
-            player: newOther,
-            log,
-            ballAtCenter: nextBallAtCenter,
-          };
+        ? { ...state, player: newActing, opponent: newOther, log, ballAtCenter: nextBallAtCenter }
+        : { ...state, opponent: newActing, player: newOther, log, ballAtCenter: nextBallAtCenter };
 
-    // ✅ Normalize ball state
     {
       const normalized = normalizeBallState(
         nextAfterSpell.ballAtCenter,
@@ -1624,22 +1552,9 @@ function playCardFromHand(
 
   let nextState =
     playerKey === "player"
-      ? {
-          ...state,
-          player: newActing,
-          opponent: newOther,
-          log,
-          ballAtCenter: nextBallAtCenter,
-        }
-      : {
-          ...state,
-          opponent: newActing,
-          player: newOther,
-          log,
-          ballAtCenter: nextBallAtCenter,
-        };
+      ? { ...state, player: newActing, opponent: newOther, log, ballAtCenter: nextBallAtCenter }
+      : { ...state, opponent: newActing, player: newOther, log, ballAtCenter: nextBallAtCenter };
 
-  // ✅ Normalize ball state
   {
     const normalized = normalizeBallState(
       nextState.ballAtCenter,
@@ -1660,7 +1575,6 @@ function playCardFromHand(
 }
 
 // ---- Hero Power ----
-// 3 mana: draw 2 cards for the acting side.
 
 function useHeroPower(state: BattleState, playerKey: PlayerKey): BattleState {
   if (state.winner) return state;
@@ -1685,35 +1599,34 @@ function useHeroPower(state: BattleState, playerKey: PlayerKey): BattleState {
     : { ...state, opponent: newActing, player: other, log };
 }
 
-// ---- AI TURN: fixed to avoid infinite loop + ⚽ aware ----
-function runOpponentTurn(state: BattleState): BattleState {
-  if (state.winner) return state;
+/**
+ * ✅ NEW: Build a step-by-step list of AI states so we can SHOW the AI's moves
+ * (instead of instantly skipping to your turn).
+ *
+ * Also includes: AI passing logic (it WILL pass now).
+ */
+function buildOpponentTurnSteps(state: BattleState): BattleState[] {
+  if (state.winner) return [];
 
-  let s: BattleState = {
-    ...state,
-    active: "opponent",
-  };
+  const steps: BattleState[] = [];
+  let s: BattleState = { ...state, active: "opponent" };
 
-  s = {
-    ...s,
-    opponent: startTurn(s.opponent, s.turn),
-  };
-  s.log.push("Opponent starts their turn.");
+  // Start opponent turn
+  s = { ...s, opponent: startTurn(s.opponent, s.turn), log: [...s.log, "Opponent starts their turn."] };
+  steps.push(s);
 
+  // Play cards loop (monsters first, then spells)
   let playedSomething = true;
   let safety = 0;
 
-  while (playedSomething && safety < 50) {
+  while (playedSomething && safety < 50 && !s.winner) {
     safety++;
     playedSomething = false;
 
-    // Only consider monsters that are actually playable
     const idxMonster = s.opponent.hand.findIndex((c) => {
       if (c.kind !== "MONSTER") return false;
       if (c.manaCost > s.opponent.mana) return false;
-      // Board full -> this monster is NOT playable
       if (s.opponent.board.length >= 3) return false;
-      // FWD needs a MID already on the pitch
       if (c.position === "FWD") {
         const hasMidfielder = s.opponent.board.some((m) => m.position === "MID");
         if (!hasMidfielder) return false;
@@ -1723,29 +1636,97 @@ function runOpponentTurn(state: BattleState): BattleState {
 
     if (idxMonster >= 0) {
       s = playCardFromHand(s, "opponent", idxMonster);
+      steps.push(s);
       playedSomething = true;
       continue;
     }
 
-    // Spells: just need enough mana
     const idxSpell = s.opponent.hand.findIndex(
       (c) => c.kind === "SPELL" && c.manaCost <= s.opponent.mana
     );
     if (idxSpell >= 0) {
       s = playCardFromHand(s, "opponent", idxSpell);
+      steps.push(s);
       playedSomething = true;
     }
   }
 
-  if (s.winner) return s;
+  if (s.winner) return steps;
 
-  // Simple AI:
-  // - If defenders on your side, clear them.
-  // - Otherwise, if you have the ball, shoot GK.
-  // - If you don't have the ball but player does, tackle their ball-holder (unless stealthed).
-  // - Else, trade into any minion.
-  s.opponent.board.forEach((m, idx) => {
-    if (!m.canAttack) return;
+  // ✅ AI PASSING (fix): try a couple of tactical passes if it helps.
+  // This especially fixes cases where a DEF gets the ball and can’t attack.
+  const maxPasses = 2;
+  for (let passTry = 0; passTry < maxPasses && !s.winner; passTry++) {
+    if (s.opponent.mana < PASS_MANA_COST) break;
+    if (s.opponent.board.length < 2) break;
+
+    const fromIdx = s.opponent.board.findIndex((m) => m.hasBall);
+    if (fromIdx < 0) break;
+
+    const passer = s.opponent.board[fromIdx];
+    const playerHasDef = s.player.board.some((m) => m.position === "DEF");
+
+    // Candidates: prefer MID/FWD, prefer canAttack, prefer higher attack
+    const candidates = s.opponent.board
+      .map((m, idx) => ({ m, idx }))
+      .filter(({ idx }) => idx !== fromIdx)
+      .filter(({ m }) => m.position !== "DEF") // avoid passing to DEF if possible
+      .sort((a, b) => {
+        const aCan = a.m.canAttack ? 1 : 0;
+        const bCan = b.m.canAttack ? 1 : 0;
+        if (bCan !== aCan) return bCan - aCan;
+        return (b.m.attack + b.m.health) - (a.m.attack + a.m.health);
+      });
+
+    // If no non-DEF targets exist, allow DEF targets
+    const fallbackAll = s.opponent.board
+      .map((m, idx) => ({ m, idx }))
+      .filter(({ idx }) => idx !== fromIdx);
+
+    const wantsPassAway =
+      passer.position === "DEF" || !passer.canAttack || (passer.stunnedForTurns ?? 0) > 0;
+
+    // If we can shoot soon (no player DEF) and we have a FWD, pass to a FWD
+    let chosenIdx: number | null = null;
+
+    if (!playerHasDef) {
+      const fwd = s.opponent.board
+        .map((m, idx) => ({ m, idx }))
+        .filter(({ idx }) => idx !== fromIdx)
+        .filter(({ m }) => m.position === "FWD" && !hasKeyword(m, "STEALTH"))
+        .sort((a, b) => (b.m.attack + b.m.health) - (a.m.attack + a.m.health))[0];
+      if (fwd) chosenIdx = fwd.idx;
+    }
+
+    if (chosenIdx === null && (wantsPassAway || playerHasDef)) {
+      chosenIdx = (candidates[0] ?? fallbackAll[0])?.idx ?? null;
+    }
+
+    if (chosenIdx === null) break;
+
+    s = passBall(s, "opponent", fromIdx, chosenIdx);
+    // Add a tiny AI note to make it obvious it “decided” to pass
+    s = { ...s, log: [...s.log, "Opponent repositions the ball with a quick pass."] };
+    steps.push(s);
+  }
+
+  if (s.winner) return steps;
+
+  // Attacks: step-by-step (no instant skip)
+  const acted = new Set<string>();
+  let attackSafety = 0;
+
+  while (!s.winner && attackSafety < 30) {
+    attackSafety++;
+
+    const attackerInfo = s.opponent.board
+      .map((m, idx) => ({ m, idx }))
+      .find(({ m }) => m.canAttack && m.position !== "DEF" && !acted.has(m.id));
+
+    if (!attackerInfo) break;
+
+    const { m, idx } = attackerInfo;
+    acted.add(m.id);
 
     const defenderIndices = findDefenderIndices(s.player.board);
 
@@ -1760,44 +1741,56 @@ function runOpponentTurn(state: BattleState): BattleState {
     if (defenderIndices.length > 0) {
       const targetIdx = defenderIndices[0];
       s = applyAttack(s, "opponent", idx, "MINION", targetIdx);
-      return;
+      steps.push(s);
+      continue;
     }
 
     if (!thisHasBall && playerBallIdx >= 0) {
-      // Try to tackle the ball-holder (if possible)
       s = applyAttack(s, "opponent", idx, "MINION", playerBallIdx);
-      return;
+      steps.push(s);
+      continue;
     }
 
     if (thisHasBall && s.player.board.length === 0) {
-      // Clean shot on GK
       s = applyAttack(s, "opponent", idx, "HERO");
-      return;
+      steps.push(s);
+      continue;
     }
 
     if (s.player.board.length > 0) {
-      // Trade into first non-stealth minion if possible
       const nonStealthIdx = s.player.board.findIndex((bm) => !hasKeyword(bm, "STEALTH"));
       const targetIdx = nonStealthIdx >= 0 ? nonStealthIdx : 0;
       s = applyAttack(s, "opponent", idx, "MINION", targetIdx);
-      return;
+      steps.push(s);
+      continue;
     }
 
     if (thisHasBall) {
       s = applyAttack(s, "opponent", idx, "HERO");
+      steps.push(s);
+    } else {
+      // If nobody to attack and no ball, do nothing
     }
-  });
+  }
 
-  if (s.winner) return s;
+  if (s.winner) return steps;
 
+  // End turn -> switch to player, start player turn
   let s2 = endTurnSwitchActive(s);
-  s2.player = startTurn(s2.player, s2.turn);
-  s2.log.push("Your turn starts.");
+  s2 = { ...s2, player: startTurn(s2.player, s2.turn), log: [...s2.log, "Your turn starts."] };
+  steps.push(s2);
 
-  return s2;
+  return steps;
 }
 
-// ---- Initial battle creation (using chosen XI & selected GK) ----
+// ---- AI TURN (instant) kept for safety/compat, but UI now uses step animation ----
+function runOpponentTurn(state: BattleState): BattleState {
+  if (state.winner) return state;
+  const steps = buildOpponentTurnSteps(state);
+  return steps.length > 0 ? steps[steps.length - 1] : state;
+}
+
+// ---- Initial battle creation ----
 
 function createInitialBattleFromXI(xi: UserMonsterDTO[], heroMonster: UserMonsterDTO): BattleState {
   const hero = buildHeroFromGK(heroMonster);
@@ -1806,10 +1799,8 @@ function createInitialBattleFromXI(xi: UserMonsterDTO[], heroMonster: UserMonste
 
 function createBattleFromBase(xi: UserMonsterDTO[], hero: HeroState): BattleState {
   const monstersAsCards = xi.map(buildMonsterCard);
-  const spells = createSpellCards(); // 9 random spells
+  const spells = createSpellCards();
   const deck: BattleCard[] = shuffle([...monstersAsCards, ...spells]);
-  // NOTE: Deck has 10 monster cards + 9 spells = 19 drawables.
-  // Plus the GK hero on board gives you effectively 20 "pieces" in play.
 
   const playerDeck = [...deck];
   const opponentDeck = [...deck];
@@ -1843,10 +1834,9 @@ function createBattleFromBase(xi: UserMonsterDTO[], hero: HeroState): BattleStat
     turn: 1,
     winner: null,
     log: ["Battle started. Player 1's turn."],
-    ballAtCenter: true, // ⚽ ball starts in the center of the pitch
+    ballAtCenter: true,
   };
 
-  // Initial 3-card deal each
   let p = { ...s.player };
   let o = { ...s.opponent };
   for (let i = 0; i < 3; i++) {
@@ -1854,8 +1844,6 @@ function createBattleFromBase(xi: UserMonsterDTO[], hero: HeroState): BattleStat
     o = drawCard(o);
   }
   s = { ...s, player: p, opponent: o };
-
-  // Player's first turn
   s.player = startTurn(s.player, s.turn);
 
   return s;
@@ -1894,22 +1882,81 @@ function BattleMatchInner() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [turnTimer, setTurnTimer] = useState<number>(TURN_DURATION);
 
-  // ✅ Targeted spell state (Stealth / Red Card)
+  // ✅ Targeted spell state
   const [pendingSpell, setPendingSpell] = useState<{
     handIndex: number;
     name: string;
     effect: SpellEffectType;
   } | null>(null);
 
+  // ✅ NEW: AI step animation state (so you can SEE the AI moves)
+  const [aiAnimating, setAiAnimating] = useState(false);
+  const aiRunTokenRef = useRef(0);
+  const aiTimeoutsRef = useRef<number[]>([]);
+  const battleRef = useRef<BattleState | null>(null);
+
+  useEffect(() => {
+    battleRef.current = battle;
+  }, [battle]);
+
+  const clearAiTimers = () => {
+    aiTimeoutsRef.current.forEach((t) => clearTimeout(t));
+    aiTimeoutsRef.current = [];
+  };
+
+  useEffect(() => {
+    return () => {
+      clearAiTimers();
+    };
+  }, []);
+
+  const runOpponentTurnAnimated = (fromState: BattleState) => {
+    if (aiAnimating) return;
+    if (fromState.winner) return;
+    if (fromState.active !== "player") return;
+
+    setAiAnimating(true);
+    clearAiTimers();
+    aiRunTokenRef.current += 1;
+    const token = aiRunTokenRef.current;
+
+    const steps = buildOpponentTurnSteps(fromState);
+    if (steps.length === 0) {
+      setAiAnimating(false);
+      return;
+    }
+
+    // Make it feel like Hearthstone: quick but readable
+    const STEP_MS = 650;
+
+    steps.forEach((st, i) => {
+      const t = window.setTimeout(() => {
+        if (aiRunTokenRef.current !== token) return; // canceled
+        setBattle((cur) => {
+          // If user restarted/left, don't apply stale steps
+          if (!cur) return cur;
+          // If something else ended the game already, stop animating
+          if (cur.winner) return cur;
+          return st;
+        });
+        if (i === steps.length - 1) {
+          setAiAnimating(false);
+        }
+      }, STEP_MS * i);
+
+      aiTimeoutsRef.current.push(t);
+    });
+  };
+
   // Pre-game XI selection
-  const [deckSelection, setDeckSelection] = useState<string[]>([]); // outfield only
+  const [deckSelection, setDeckSelection] = useState<string[]>([]);
   const [deckError, setDeckError] = useState<string | null>(null);
   const [positionFilter, setPositionFilter] = useState<PositionFilter>("ALL");
-  const [heroId, setHeroId] = useState<string | null>(null); // selected GK hero
+  const [heroId, setHeroId] = useState<string | null>(null);
   const [formationId, setFormationId] = useState<string>(FORMATIONS[0].id);
-  const maxDeckSize = OUTFIELD_REQUIRED; // 10 outfield
+  const maxDeckSize = OUTFIELD_REQUIRED;
 
-  // PvP queue state (only meaningful when isPvP = true)
+  // PvP queue state
   const [queueStatus, setQueueStatus] = useState<QueueStatus>("IDLE");
   const [queueError, setQueueError] = useState<string | null>(null);
 
@@ -1950,7 +1997,6 @@ function BattleMatchInner() {
       m.currentTime = 0;
       void m.play();
     } catch {
-      // Autoplay restrictions: we'll keep trying on the next user interaction
       musicStartedRef.current = false;
     }
   };
@@ -1977,7 +2023,6 @@ function BattleMatchInner() {
         day: "2-digit",
       }).format(new Date());
     } catch {
-      // fallback
       const d = new Date();
       const yyyy = d.getFullYear();
       const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -2012,8 +2057,6 @@ function BattleMatchInner() {
   };
 
   const tryGrantCoinsServer = async (amount: number) => {
-    // NOTE: If your backend route differs, update this path.
-    // This is wrapped in try/catch so it never breaks battle mode.
     await fetch("/api/me/coins/earn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2027,7 +2070,6 @@ function BattleMatchInner() {
 
   // Preload audio on mount
   useEffect(() => {
-    // Load mute preference
     try {
       const raw = localStorage.getItem("fml_battle_muted");
       if (raw === "1") setIsMuted(true);
@@ -2049,7 +2091,6 @@ function BattleMatchInner() {
       uiClick: new Audio(SFX_PATHS.uiClick),
     };
 
-    // Small per-SFX volume tuning
     (Object.keys(loaded) as SfxKey[]).forEach((k) => {
       loaded[k].volume = k === "death" ? 0.7 : 0.55;
       loaded[k].preload = "auto";
@@ -2084,7 +2125,6 @@ function BattleMatchInner() {
     if (isMuted) {
       stopMusic();
     } else {
-      // if a battle is active, try to start music (requires user interaction; will retry)
       if (battle && !battle.winner) startMusic();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2093,9 +2133,7 @@ function BattleMatchInner() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch("/api/me/collection", {
-          credentials: "include",
-        });
+        const res = await fetch("/api/me/collection", { credentials: "include" });
         if (!res.ok) {
           setError("Failed to load your collection.");
           return;
@@ -2116,7 +2154,7 @@ function BattleMatchInner() {
     [formationId]
   );
 
-  // Auto-pick XI once collection is loaded (formation-based), only if nothing picked yet
+  // Auto-pick XI once collection is loaded
   useEffect(() => {
     if (!loading && !error && collection.length > 0 && deckSelection.length === 0 && !heroId) {
       const result = autoPickForFormation(collection, activeFormation);
@@ -2125,9 +2163,11 @@ function BattleMatchInner() {
     }
   }, [loading, error, collection, deckSelection.length, heroId, activeFormation]);
 
-  // Turn timer for single-player battle
+  // Turn timer (PLAYER TURN ONLY; don't run during AI animation)
   useEffect(() => {
     if (!battle || battle.winner) return;
+    if (battle.active !== "player") return;
+    if (aiAnimating) return;
 
     setTurnTimer(TURN_DURATION);
     const interval = setInterval(() => {
@@ -2137,11 +2177,12 @@ function BattleMatchInner() {
           setPendingSpell(null);
           setSelectedAttacker(null);
           setActionMessage(null);
-          setBattle((prevBattle) => {
-            if (!prevBattle || prevBattle.winner) return prevBattle;
-            if (prevBattle.active !== "player") return prevBattle;
-            return runOpponentTurn(prevBattle);
-          });
+
+          const current = battleRef.current;
+          if (current && !current.winner && current.active === "player") {
+            runOpponentTurnAnimated(current);
+          }
+
           return 0;
         }
         return prev - 1;
@@ -2149,7 +2190,7 @@ function BattleMatchInner() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [battle?.active, battle?.turn, battle?.winner]);
+  }, [battle?.active, battle?.turn, battle?.winner, aiAnimating]);
 
   // Clear pending spell when it's not your turn
   useEffect(() => {
@@ -2159,16 +2200,14 @@ function BattleMatchInner() {
     }
   }, [battle?.active, pendingSpell, battle]);
 
-  // PvP queue polling (only if isPvP and not in a local battle)
+  // PvP queue polling
   useEffect(() => {
     if (!isPvP) return;
     if (queueStatus !== "QUEUED") return;
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch("/api/battle/queue", {
-          credentials: "include",
-        });
+        const res = await fetch("/api/battle/queue", { credentials: "include" });
         if (!res.ok) return;
         const data: QueueResponse = await res.json();
 
@@ -2211,16 +2250,14 @@ function BattleMatchInner() {
     [collection, positionFilter]
   );
 
-  const totalSelectedCount = deckSelection.length + (heroId ? 1 : 0); // outfield + GK hero
+  const totalSelectedCount = deckSelection.length + (heroId ? 1 : 0);
 
   const handleToggleDeckMonster = (id: string) => {
     setDeckError(null);
     setActionMessage(null);
     playSfx("uiClick");
     setDeckSelection((prev) => {
-      if (prev.includes(id)) {
-        return prev.filter((x) => x !== id);
-      }
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (prev.length >= maxDeckSize) return prev;
       return [...prev, id];
     });
@@ -2255,9 +2292,7 @@ function BattleMatchInner() {
     }
 
     if (totalSelectedCount !== TOTAL_XI) {
-      setDeckError(
-        `You must have exactly ${TOTAL_XI} players selected (1 GK hero + ${OUTFIELD_REQUIRED} outfield).`
-      );
+      setDeckError(`You must have exactly ${TOTAL_XI} players selected (1 GK hero + ${OUTFIELD_REQUIRED} outfield).`);
       return;
     }
 
@@ -2278,7 +2313,7 @@ function BattleMatchInner() {
       return;
     }
 
-    // --- PvP mode: join queue instead of creating a local AI battle (unchanged) ---
+    // PvP mode (unchanged)
     if (isPvP) {
       try {
         setQueueStatus("IDLE");
@@ -2315,26 +2350,27 @@ function BattleMatchInner() {
       return;
     }
 
-    // --- Single-player vs AI mode ---
+    // Single-player vs AI
     const next = createInitialBattleFromXI(xiOutfield, heroMonster);
     setSelectedAttacker(null);
     setActionMessage(null);
     setPendingSpell(null);
+    setAiAnimating(false);
+    clearAiTimers();
     setBattle(next);
 
-    // Start background music on user interaction (Start Battle click counts)
     startMusic();
   };
 
   const handlePlayCard = (handIndex: number) => {
     if (!battle) return;
     if (battle.winner) return;
+    if (aiAnimating) return;
 
     const actingKey: PlayerKey = battle.active;
     const acting = actingKey === "player" ? battle.player : battle.opponent;
     const card = acting.hand[handIndex];
 
-    // ✅ If a targeted spell is played, enter targeting mode (player only).
     if (
       card &&
       card.kind === "SPELL" &&
@@ -2365,7 +2401,6 @@ function BattleMatchInner() {
       }
     }
 
-    // --- SFX for playing cards (player only) ---
     if (actingKey === "player" && card) {
       if (card.kind === "MONSTER") {
         if (card.position === "DEF") playSfx("deployDEF");
@@ -2381,24 +2416,23 @@ function BattleMatchInner() {
     setActionMessage(null);
     setBattle((prev) => (prev ? playCardFromHand(prev, actingKey, handIndex) : prev));
 
-    // If unmuted, attempt to start music once the user starts interacting during battle
     startMusic();
   };
 
-  // ✅ Cancel targeting if needed
   const handleCancelTargeting = () => {
     playSfx("uiClick");
     setPendingSpell(null);
     setActionMessage(null);
   };
 
-  // ✅ NEW: Forfeit match (player loses immediately)
   const handleForfeitMatch = () => {
     playSfx("uiClick");
     stopMusic();
     setSelectedAttacker(null);
     setPendingSpell(null);
     setActionMessage(null);
+    setAiAnimating(false);
+    clearAiTimers();
     setBattle((prev) => {
       if (!prev || prev.winner) return prev;
       return {
@@ -2409,16 +2443,17 @@ function BattleMatchInner() {
     });
   };
 
-  // ⚽ Handle clicking *your own* monsters: select attacker OR pass the ball OR target a spell
   const handlePlayerBoardClick = (idx: number) => {
     if (!battle) return;
     if (battle.winner) return;
+    if (aiAnimating) return;
+
     if (battle.active !== "player") {
       setActionMessage("It is not your turn.");
       return;
     }
 
-    // ✅ Targeted spell resolution (your side)
+    // Targeted spell on your side
     if (pendingSpell) {
       const target = battle.player.board[idx];
       if (!target) return;
@@ -2444,14 +2479,12 @@ function BattleMatchInner() {
     const card = battle.player.board[idx];
     if (!card) return;
 
-    // No selection yet: select this monster (attacker or potential passer)
     if (selectedAttacker === null) {
       setActionMessage(null);
       setSelectedAttacker(idx);
       return;
     }
 
-    // Clicking the same monster toggles selection off
     if (idx === selectedAttacker) {
       setSelectedAttacker(null);
       setActionMessage(null);
@@ -2465,14 +2498,12 @@ function BattleMatchInner() {
       return;
     }
 
-    // If source does NOT have the ball, just switch selected attacker/passer
     if (!source.hasBall) {
       setSelectedAttacker(idx);
       setActionMessage(null);
       return;
     }
 
-    // Source has the ball → attempt a PASS to idx
     if (battle.player.mana < PASS_MANA_COST) {
       setActionMessage(`Not enough mana to pass. Passing costs ${PASS_MANA_COST} mana.`);
       return;
@@ -2481,35 +2512,7 @@ function BattleMatchInner() {
     setBattle((prev) => {
       if (!prev) return prev;
       if (prev.winner || prev.active !== "player") return prev;
-
-      const currentSource = prev.player.board[selectedAttacker];
-      const currentTarget = prev.player.board[idx];
-      if (!currentSource || !currentTarget) return prev;
-      if (!currentSource.hasBall) return prev;
-
-      const newPlayer = { ...prev.player };
-      newPlayer.mana = Math.max(0, newPlayer.mana - PASS_MANA_COST);
-      newPlayer.board = newPlayer.board.map((m, i) => {
-        if (i === selectedAttacker) return { ...m, hasBall: false };
-        if (i === idx) return { ...m, hasBall: true };
-        return { ...m, hasBall: false };
-      });
-
-      const newLog = [
-        ...prev.log,
-        `${prev.player.label}'s ${currentSource.name} passed the ball to ${currentTarget.name}.`,
-      ];
-
-      return {
-        ...prev,
-        player: newPlayer,
-        opponent: {
-          ...prev.opponent,
-          board: prev.opponent.board.map((m) => ({ ...m, hasBall: false })),
-        },
-        ballAtCenter: false,
-        log: newLog,
-      };
+      return passBall(prev, "player", selectedAttacker, idx);
     });
 
     playSfx("pass");
@@ -2522,6 +2525,8 @@ function BattleMatchInner() {
   const handleAttackHero = () => {
     if (!battle) return;
     if (battle.winner) return;
+    if (aiAnimating) return;
+
     if (battle.active !== "player") {
       setActionMessage("It is not your turn.");
       return;
@@ -2551,13 +2556,11 @@ function BattleMatchInner() {
     }
 
     const opponentHasDefender = battle.opponent.board.some((m) => m.position === "DEF");
-
     if (opponentHasDefender) {
       setActionMessage("You must attack the defenders before you can target the Goalkeeper.");
       return;
     }
 
-    // SFX: attacker shooting GK (MID/FWD)
     if (attacker.position === "MID") playSfx("attackMID");
     if (attacker.position === "FWD") playSfx("attackFWD");
     playSfx("shootGK");
@@ -2571,12 +2574,13 @@ function BattleMatchInner() {
   const handleAttackMinion = (enemyIdx: number) => {
     if (!battle) return;
     if (battle.winner) return;
+    if (aiAnimating) return;
+
     if (battle.active !== "player") {
       setActionMessage("It is not your turn.");
       return;
     }
 
-    // ✅ Targeted spell resolution (enemy side)
     if (pendingSpell) {
       playSfx("spell");
       startMusic();
@@ -2616,13 +2620,11 @@ function BattleMatchInner() {
       return;
     }
 
-    // UI-friendly message if target is stealthed
     if (enemy.keywords.includes("STEALTH")) {
       setActionMessage("That monster is in Stealth and can’t be attacked right now.");
       return;
     }
 
-    // SFX: attacker combat (MID/FWD)
     if (attacker.position === "MID") playSfx("attackMID");
     if (attacker.position === "FWD") playSfx("attackFWD");
     startMusic();
@@ -2633,22 +2635,25 @@ function BattleMatchInner() {
   };
 
   const handleEndTurn = () => {
+    if (!battle) return;
+    if (battle.winner) return;
+    if (battle.active !== "player") return;
+    if (aiAnimating) return;
+
     playSfx("uiClick");
     startMusic();
     setSelectedAttacker(null);
     setPendingSpell(null);
     setActionMessage(null);
-    setBattle((prev) => {
-      if (!prev) return prev;
-      if (prev.winner) return prev;
-      if (prev.active !== "player") return prev;
-      return runOpponentTurn(prev);
-    });
+
+    runOpponentTurnAnimated(battle);
   };
 
   const handleHeroPowerClick = () => {
     if (!battle) return;
     if (battle.winner) return;
+    if (aiAnimating) return;
+
     if (battle.active !== "player") {
       setActionMessage("It is not your turn.");
       return;
@@ -2676,18 +2681,22 @@ function BattleMatchInner() {
 
     setRewardInfo(null);
     setPendingSpell(null);
+    setSelectedAttacker(null);
+    setActionMessage(null);
+    setAiAnimating(false);
+    clearAiTimers();
+    aiRunTokenRef.current += 1; // cancel any in-flight AI steps
+
     if (deckSelection.length === OUTFIELD_REQUIRED && heroId) {
       const xiOutfield = collection.filter((m) => deckSelection.includes(m.id));
       const heroMonster = collection.find((m) => m.id === heroId);
       if (xiOutfield.length === OUTFIELD_REQUIRED && heroMonster && heroMonster.position === "GK") {
         const next = createInitialBattleFromXI(xiOutfield, heroMonster);
-        setSelectedAttacker(null);
-        setActionMessage(null);
         setBattle(next);
         return;
       }
     }
-    // Fallback: if for some reason GK or XI invalid, go back to squad selection
+
     setBattle(null);
     setActionMessage("Your XI or Goalkeeper selection is no longer valid. Please re-pick your squad.");
   };
@@ -2696,9 +2705,7 @@ function BattleMatchInner() {
   const opponentBoard = battle?.opponent.board ?? [];
   const logView = useMemo(() => battle?.log.slice(-8) ?? [], [battle]);
 
-  // ✅ NEW: Auto-draw detection for stalemate:
-  // If BOTH sides have no cards left (deck+hand) and there are no attackers left on the pitch
-  // (i.e. only DEF remain, or empty boards), then nobody can ever score → DRAW.
+  // Auto-draw detection for stalemate
   useEffect(() => {
     if (!battle) return;
     if (battle.winner) return;
@@ -2727,7 +2734,7 @@ function BattleMatchInner() {
     }
   }, [battle]);
 
-  // --- Reward payout on battle end (single-player only) ---
+  // Reward payout on battle end (single-player only)
   useEffect(() => {
     if (!battle) return;
     if (!battle.winner) return;
@@ -2735,19 +2742,10 @@ function BattleMatchInner() {
     if (rewardInfo?.status === "GRANTED" || rewardInfo?.status === "ERROR") return;
 
     const requested =
-      battle.winner === "player"
-        ? SINGLE_WIN_COINS
-        : battle.winner === "DRAW"
-        ? SINGLE_DRAW_COINS
-        : 0;
+      battle.winner === "player" ? SINGLE_WIN_COINS : battle.winner === "DRAW" ? SINGLE_DRAW_COINS : 0;
 
     if (requested <= 0) {
-      setRewardInfo({
-        requested: 0,
-        granted: 0,
-        capRemaining: SINGLE_DAILY_COIN_CAP,
-        status: "GRANTED",
-      });
+      setRewardInfo({ requested: 0, granted: 0, capRemaining: SINGLE_DAILY_COIN_CAP, status: "GRANTED" });
       return;
     }
 
@@ -2755,10 +2753,7 @@ function BattleMatchInner() {
 
     const run = async () => {
       try {
-        if (granted > 0) {
-          // Attempt to grant on server (safe-fail).
-          await tryGrantCoinsServer(granted);
-        }
+        if (granted > 0) await tryGrantCoinsServer(granted);
         setRewardInfo({
           requested,
           granted,
@@ -2772,7 +2767,6 @@ function BattleMatchInner() {
               : undefined,
         });
       } catch (e) {
-        // Still keep local cap tracking; show error for server sync.
         setRewardInfo({
           requested,
           granted,
@@ -2787,7 +2781,7 @@ function BattleMatchInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [battle?.winner, isPvP]);
 
-  // --- SFX: detect deaths + GK shots + opponent deploys automatically (no engine side-effects) ---
+  // SFX: detect deaths + GK shots + opponent deploys
   const prevBattleRef = useRef<BattleState | null>(null);
   useEffect(() => {
     if (!battle) {
@@ -2797,26 +2791,28 @@ function BattleMatchInner() {
 
     const prev = prevBattleRef.current;
     if (prev) {
-      // Monster death SFX (either side)
       const playerDeaths = battle.player.board.length < prev.player.board.length;
       const oppDeaths = battle.opponent.board.length < prev.opponent.board.length;
       if (playerDeaths || oppDeaths) playSfx("death");
 
-      // GK shot SFX (either GK took damage)
       const playerGkHit = battle.player.hero.hp < prev.player.hero.hp;
       const oppGkHit = battle.opponent.hero.hp < prev.opponent.hero.hp;
       if (playerGkHit || oppGkHit) playSfx("shootGK");
 
-      // Opponent deploy SFX
       if (battle.opponent.board.length > prev.opponent.board.length) {
-        const added = battle.opponent.board.find(
-          (m) => !prev.opponent.board.some((x) => x.id === m.id)
-        );
+        const added = battle.opponent.board.find((m) => !prev.opponent.board.some((x) => x.id === m.id));
         if (added) {
           if (added.position === "DEF") playSfx("deployDEF");
           if (added.position === "MID") playSfx("deployMID");
           if (added.position === "FWD") playSfx("deployFWD");
         }
+      }
+
+      // ✅ NEW: play pass SFX if opponent changes ball-holder while AI animating
+      const prevOppBall = prev.opponent.board.find((m) => m.hasBall)?.id ?? null;
+      const nextOppBall = battle.opponent.board.find((m) => m.hasBall)?.id ?? null;
+      if (prevOppBall !== nextOppBall && nextOppBall && battle.active === "opponent") {
+        playSfx("pass");
       }
     }
 
@@ -2862,7 +2858,6 @@ function BattleMatchInner() {
 
   // ---- Pre-game XI selection ----
   if (!battle && !isPvP) {
-    // Normal single-player vs AI flow
     return (
       <main className="space-y-4">
         <section className="space-y-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/60 p-4">
@@ -2899,7 +2894,6 @@ function BattleMatchInner() {
             </span>
           </div>
 
-          {/* Formation + auto pick */}
           <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-emerald-100">
             <div className="flex items-center gap-2">
               <span className="font-semibold">Formation</span>
@@ -2924,7 +2918,6 @@ function BattleMatchInner() {
             </button>
           </div>
 
-          {/* GK selection */}
           <div className="mt-2 space-y-1 text-[11px] text-emerald-100">
             <p className="font-semibold">Goalkeeper hero (counts in XI)</p>
             {heroCandidates.length === 0 ? (
@@ -2959,7 +2952,6 @@ function BattleMatchInner() {
 
           {deckError && <p className="mt-1 text-[11px] text-red-300">{deckError}</p>}
 
-          {/* Start button */}
           <div className="mt-3 flex justify-end">
             <button
               type="button"
@@ -2985,7 +2977,7 @@ function BattleMatchInner() {
                 as your hero and cannot be used as outfield cards.
               </p>
             </div>
-            {/* Position filter */}
+
             <div className="flex flex-wrap gap-1 text-[10px]">
               {(["ALL", "GK", "DEF", "MID", "FWD"] as PositionFilter[]).map((f) => (
                 <button
@@ -3010,7 +3002,6 @@ function BattleMatchInner() {
               const selected = deckSelection.includes(monster.id);
               const isGK = monster.position === "GK";
               const disabledBase = !selected && deckSelection.length >= maxDeckSize;
-              // Goalkeepers can never be selected into the outfield XI
               const disabled = disabledBase || isGK;
               return (
                 <DeckSelectionCard
@@ -3034,8 +3025,6 @@ function BattleMatchInner() {
 
     return (
       <main className="space-y-4">
-        {/* (unchanged PvP XI UI) */}
-        {/* ... your existing PvP selection UI remains unchanged ... */}
         <section className="space-y-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/60 p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -3206,7 +3195,7 @@ function BattleMatchInner() {
     );
   }
 
-  // ---- Main battle UI (single-player vs AI only) ----
+  // ---- Main battle UI ----
   const opponentHeroArt = battle!.opponent.hero.artUrl ?? "/cards/base/test.png";
   const playerHeroArt = battle!.player.hero.artUrl ?? "/cards/base/test.png";
 
@@ -3230,7 +3219,6 @@ function BattleMatchInner() {
       `}</style>
 
       <main className="space-y-4">
-        {/* Top info (no End Turn / Restart here anymore) */}
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
           <div className="space-y-1">
             <p className="text-[11px] text-slate-300">
@@ -3238,10 +3226,10 @@ function BattleMatchInner() {
               <span className="font-semibold text-emerald-300">
                 {battle!.active === "player" ? "You" : "Opponent (AI)"}
               </span>
+              {aiAnimating && <span className="ml-2 text-[10px] text-slate-300">(AI playing…)</span>}
             </p>
 
             <div className="flex flex-wrap items-center gap-3">
-              {/* Mana indicator */}
               <div className="flex items-center gap-2">
                 <span className="text-[10px] uppercase tracking-wide text-sky-200">Mana</span>
                 <div className="flex gap-1">
@@ -3259,7 +3247,6 @@ function BattleMatchInner() {
                 </span>
               </div>
 
-              {/* Turn timer */}
               <div className="flex items-center gap-2">
                 <span className="text-[10px] uppercase tracking-wide text-amber-200">Turn timer</span>
                 <div className="relative h-5 w-24 overflow-hidden rounded-full border border-amber-400/60 bg-slate-800">
@@ -3286,7 +3273,6 @@ function BattleMatchInner() {
           </div>
         </section>
 
-        {/* ✅ UPDATED: Bigger, "Hearthstone-like" right-side controls (End Turn + Forfeit) */}
         <aside className="fixed right-0 top-1/2 z-50 flex -translate-y-1/2 flex-col items-stretch gap-2 pr-2">
           {pendingSpell && (
             <button
@@ -3300,7 +3286,7 @@ function BattleMatchInner() {
 
           <button
             type="button"
-            disabled={!!battle!.winner || battle!.active !== "player"}
+            disabled={!!battle!.winner || battle!.active !== "player" || aiAnimating}
             onClick={handleEndTurn}
             className="w-40 rounded-l-2xl border border-emerald-400/80 bg-slate-950/90 px-4 py-5 text-base font-extrabold text-emerald-200 shadow-2xl hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -3336,16 +3322,13 @@ function BattleMatchInner() {
           </button>
         </aside>
 
-        {/* Shared pitch */}
         <section className="relative space-y-4 overflow-hidden rounded-3xl border border-emerald-500/60 bg-gradient-to-b from-emerald-900 via-emerald-950 to-emerald-900 p-4">
-          {/* Pitch markings */}
           <div className="pointer-events-none absolute inset-4 rounded-[32px] border border-emerald-600/40" />
           <div className="pointer-events-none absolute inset-x-6 top-1/2 h-px -translate-y-1/2 border-t border-emerald-500/50" />
           <div className="pointer-events-none absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-emerald-500/40" />
           <div className="pointer-events-none absolute inset-x-10 top-6 h-16 rounded-[999px] border border-emerald-500/40" />
           <div className="pointer-events-none absolute inset-x-10 bottom-6 h-16 rounded-[999px] border border-emerald-500/40" />
 
-          {/* ⚽ Ball in the center when free */}
           {battle!.ballAtCenter && (
             <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-emerald-300/80 bg-slate-950/80 text-xs">
               ⚽
@@ -3353,11 +3336,11 @@ function BattleMatchInner() {
           )}
 
           <div className="relative flex flex-col gap-6">
-            {/* Opponent GK (click to shoot) */}
             <button
               type="button"
               onClick={handleAttackHero}
-              className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-900/50 px-3 py-3 text-center transition hover:border-emerald-300 hover:bg-emerald-800/60"
+              disabled={aiAnimating}
+              className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-900/50 px-3 py-3 text-center transition hover:border-emerald-300 hover:bg-emerald-800/60 disabled:opacity-60"
             >
               <div className="flex flex-col items-center gap-1">
                 <div className="relative h-16 w-16 overflow-hidden rounded-full border border-emerald-400 bg-emerald-700/60 shadow-lg">
@@ -3372,7 +3355,6 @@ function BattleMatchInner() {
               <HeroHealth hero={battle!.opponent.hero} />
             </button>
 
-            {/* Opponent board */}
             <div className="flex min-h-[3rem] flex-wrap justify-center gap-3">
               {opponentBoard.length === 0 ? (
                 <div className="h-4" />
@@ -3384,15 +3366,13 @@ function BattleMatchInner() {
                     owner="opponent"
                     isSelected={false}
                     onClick={() => {
+                      if (aiAnimating) return;
                       if (battle!.active === "player") {
-                        // If targeting a spell, clicking an enemy minion resolves it
                         if (pendingSpell) {
                           handleAttackMinion(idx);
                           return;
                         }
-                        if (selectedAttacker !== null) {
-                          handleAttackMinion(idx);
-                        }
+                        if (selectedAttacker !== null) handleAttackMinion(idx);
                       }
                     }}
                     showStatusOverlay
@@ -3401,7 +3381,6 @@ function BattleMatchInner() {
               )}
             </div>
 
-            {/* Player board */}
             <div className="flex min-h-[3rem] flex-wrap justify-center gap-3">
               {playerBoard.length === 0 ? (
                 <div className="h-4" />
@@ -3419,11 +3398,15 @@ function BattleMatchInner() {
               )}
             </div>
 
-            {/* ✅ CHANGED: Player GK is clickable to use Hero Power */}
             <button
               type="button"
               onClick={handleHeroPowerClick}
-              disabled={!!battle!.winner || battle!.active !== "player" || battle!.player.mana < HERO_POWER_COST}
+              disabled={
+                !!battle!.winner ||
+                battle!.active !== "player" ||
+                battle!.player.mana < HERO_POWER_COST ||
+                aiAnimating
+              }
               className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-900/50 px-3 py-3 text-center transition hover:border-emerald-300 hover:bg-emerald-800/60 disabled:cursor-not-allowed disabled:opacity-50"
               title="Hero Power: Draw 2 cards (3 mana)"
             >
@@ -3443,15 +3426,13 @@ function BattleMatchInner() {
           </div>
         </section>
 
-        {/* Hand */}
         <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3">
           <p className="mb-1 text-[11px] text-slate-300">Your hand (Player 1)</p>
           <div className="flex flex-wrap gap-2">
-            {renderHand(battle!.player.hand, battle!.player.mana, !!battle!.winner, (idx) => handlePlayCard(idx))}
+            {renderHand(battle!.player.hand, battle!.player.mana, !!battle!.winner || aiAnimating, (idx) => handlePlayCard(idx))}
           </div>
         </section>
 
-        {/* Log */}
         <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3">
           <p className="mb-1 text-[11px] font-semibold text-slate-100">Battle log</p>
           {logView.length === 0 ? (
@@ -3468,7 +3449,6 @@ function BattleMatchInner() {
         </section>
       </main>
 
-      {/* ✅ End-of-game overlay (win/lose/draw) + Play Again */}
       {battle?.winner && (
         <BattleEndOverlay
           winner={battle.winner}
@@ -3479,6 +3459,9 @@ function BattleMatchInner() {
           onExitToSquad={() => {
             playSfx("uiClick");
             stopMusic();
+            setAiAnimating(false);
+            clearAiTimers();
+            aiRunTokenRef.current += 1;
             setBattle(null);
             setRewardInfo(null);
             setSelectedAttacker(null);
@@ -3810,48 +3793,51 @@ function DeckSelectionCard(props: {
       type="button"
       onClick={onToggle}
       disabled={disabled}
-      className={`group relative flex items-stretch gap-2 rounded-2xl border ${rarityBorder} bg-slate-900/80 p-2 text-left shadow-md transition ${
-        disabled && !selected
-          ? "cursor-not-allowed opacity-40"
-          : "cursor-pointer hover:-translate-y-1 hover:border-emerald-400"
-      }`}
+      className={`relative overflow-hidden rounded-2xl border ${rarityBorder} bg-slate-950/60 p-2 text-left shadow-md transition ${
+        disabled ? "cursor-not-allowed opacity-40" : "hover:-translate-y-0.5 hover:bg-slate-900/60"
+      } ${selected ? "ring-2 ring-emerald-400" : ""}`}
+      title={disabled && monster.position === "GK" ? "Goalkeepers are chosen as hero only." : undefined}
     >
-      <div className="relative h-20 w-16 overflow-hidden rounded-xl">
-        <img src={artUrl} alt={monster.displayName || monster.realPlayerName} className="h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/30 to-slate-950/10" />
-        <div className={`absolute left-1 top-1 rounded-full px-2 py-0.5 ${positionColor}`}>
-          <span className="text-[9px] font-semibold uppercase text-slate-50">{monster.position}</span>
+      <div className="flex gap-2">
+        <div className="relative h-16 w-16 overflow-hidden rounded-xl border border-slate-700 bg-slate-900">
+          <img src={artUrl} alt={monster.displayName || monster.realPlayerName} className="h-full w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/20 to-transparent" />
+          <div className={`absolute left-1 top-1 rounded-full px-2 py-0.5 ${positionColor}`}>
+            <span className="text-[9px] font-semibold uppercase text-slate-50">{monster.position}</span>
+          </div>
         </div>
-      </div>
 
-      <div className="flex min-w-0 flex-1 flex-col justify-between">
-        <div className="space-y-0.5">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-[12px] font-semibold text-slate-100">
             {monster.displayName || monster.realPlayerName}
           </p>
-          <p className="truncate text-[10px] text-slate-400">{monster.club}</p>
-          <p className="text-[10px] text-slate-400">
-            ATK {monster.baseAttack} • MAG {monster.baseMagic} • DEF {monster.baseDefense}
+          <p className="mt-0.5 text-[10px] text-slate-400">
+            {monster.club} • {monster.rarity}
+          </p>
+          <p className="mt-1 text-[10px] text-slate-300">
+            ATK <span className="font-mono">{monster.baseAttack}</span> • MAG{" "}
+            <span className="font-mono">{monster.baseMagic}</span> • DEF{" "}
+            <span className="font-mono">{monster.baseDefense}</span> • Evo{" "}
+            <span className="font-mono">{monster.evolutionLevel}</span>
           </p>
         </div>
-        <div className="mt-1 flex items-center justify-between text-[10px]">
-          <span className="rounded-full bg-slate-800/90 px-2 py-0.5 text-slate-200">{monster.rarity}</span>
-          {typeof monster.evolutionLevel === "number" && monster.evolutionLevel > 0 && (
-            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-emerald-200">Evo {monster.evolutionLevel}</span>
+
+        <div className="flex flex-col items-end justify-between">
+          {selected ? (
+            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+              Selected
+            </span>
+          ) : (
+            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
+              {disabled ? "Locked" : "Tap"}
+            </span>
+          )}
+          {rarityTier !== "COMMON" && (
+            <span className="rounded-full bg-slate-900/70 px-2 py-0.5 text-[9px] text-slate-300">
+              Mana {manaFromRarity(rarityTier)}
+            </span>
           )}
         </div>
-      </div>
-
-      <div className="absolute right-2 top-2">
-        {selected ? (
-          <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-semibold text-slate-950">
-            In XI
-          </span>
-        ) : monster.position === "GK" ? (
-          <span className="rounded-full bg-emerald-900/80 px-2 py-0.5 text-[9px] text-emerald-200">GK (hero only)</span>
-        ) : (
-          <span className="rounded-full bg-slate-800/80 px-2 py-0.5 text-[9px] text-slate-200">Tap to add</span>
-        )}
       </div>
     </button>
   );
@@ -3874,77 +3860,82 @@ function BattleEndOverlay(props: {
   const { winner, rewardInfo, isMuted, onToggleMute, onPlayAgain, onExitToSquad } = props;
 
   const title =
-    winner === "DRAW" ? "Draw" : winner === "player" ? "You win!" : "You lose";
+    winner === "player" ? "You Win!" : winner === "opponent" ? "You Lost" : "Draw";
 
-  const rewardLine =
+  const subtitle =
     winner === "player"
-      ? `+${SINGLE_WIN_COINS} coins (single-player win)`
-      : winner === "DRAW"
-      ? `+${SINGLE_DRAW_COINS} coins (draw)`
-      : `No coins for a loss`;
+      ? "Nice one — your GK held up and you finished the job."
+      : winner === "opponent"
+      ? "Tough match — run it back."
+      : "Stalemate — nobody could break through.";
+
+  const rewardLine = (() => {
+    if (!rewardInfo) return null;
+    if (rewardInfo.status === "ERROR") {
+      return (
+        <p className="text-[11px] text-red-200">
+          {rewardInfo.message ?? "Coin awarding had an error."}
+        </p>
+      );
+    }
+    if (rewardInfo.requested <= 0) return null;
+
+    return (
+      <div className="space-y-1">
+        <p className="text-[12px] text-emerald-200">
+          Coins:{" "}
+          <span className="font-mono font-semibold text-emerald-100">
+            +{rewardInfo.granted}
+          </span>
+          {rewardInfo.granted < rewardInfo.requested && (
+            <span className="ml-2 text-[11px] text-slate-300">
+              (requested {rewardInfo.requested})
+            </span>
+          )}
+        </p>
+        <p className="text-[10px] text-slate-300">
+          Daily cap remaining: <span className="font-mono">{rewardInfo.capRemaining}</span>
+        </p>
+        {rewardInfo.message && <p className="text-[10px] text-amber-200">{rewardInfo.message}</p>}
+      </div>
+    );
+  })();
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4">
-      <div className="w-full max-w-md rounded-3xl border border-emerald-500/40 bg-slate-950/90 p-5 shadow-2xl">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-extrabold text-emerald-200">{title}</h2>
-            <p className="mt-1 text-[12px] text-slate-300">{rewardLine}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onToggleMute}
-            className="rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-800"
-          >
-            {isMuted ? "Unmute" : "Mute"}
-          </button>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4">
+      <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-950/95 p-5 shadow-2xl">
+        <h2 className="text-xl font-extrabold text-slate-50">{title}</h2>
+        <p className="mt-1 text-[12px] text-slate-300">{subtitle}</p>
+
+        <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/40 p-3">
+          <p className="text-[11px] font-semibold text-slate-100">Rewards</p>
+          <div className="mt-2">{rewardLine ?? <p className="text-[11px] text-slate-400">No reward for this outcome.</p>}</div>
         </div>
 
-        <div className="mt-4 space-y-2 rounded-2xl border border-slate-800 bg-slate-900/40 p-3">
-          <p className="text-[11px] text-slate-200">
-            Daily cap (single-player): <span className="font-mono font-semibold">{SINGLE_DAILY_COIN_CAP}</span> coins
-          </p>
-          <p className="text-[11px] text-slate-200">
-            Remaining today:{" "}
-            <span className="font-mono font-semibold">
-              {rewardInfo ? rewardInfo.capRemaining : "…"}
-            </span>
-          </p>
-
-          {winner !== "opponent" && (
-            <p className="text-[11px] text-emerald-200">
-              Awarded:{" "}
-              <span className="font-mono font-semibold">
-                {rewardInfo ? rewardInfo.granted : "…"}
-              </span>{" "}
-              coins
-              {rewardInfo?.message ? (
-                <span className="ml-2 text-[11px] text-amber-200">({rewardInfo.message})</span>
-              ) : null}
-            </p>
-          )}
-
-          {rewardInfo?.status === "ERROR" && (
-            <p className="text-[11px] text-red-300">
-              Server sync failed — check /api/me/coins/earn (local cap tracking still applied).
-            </p>
-          )}
-        </div>
-
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onExitToSquad}
-            className="rounded-2xl border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
-          >
-            Change XI
-          </button>
+        <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={onPlayAgain}
-            className="rounded-2xl border border-emerald-400 bg-emerald-400 px-4 py-2 text-sm font-extrabold text-slate-950 hover:bg-emerald-300"
+            className="flex-1 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-extrabold text-slate-950 hover:bg-emerald-300"
           >
             Play Again
+          </button>
+          <button
+            type="button"
+            onClick={onExitToSquad}
+            className="flex-1 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+          >
+            Exit
+          </button>
+        </div>
+
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={onToggleMute}
+            className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-900"
+          >
+            {isMuted ? "Unmute" : "Mute"}
           </button>
         </div>
       </div>
